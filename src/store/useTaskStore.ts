@@ -35,6 +35,24 @@ interface TaskStore {
   setFilters: (filters: Partial<TaskFilters>) => void;
   clearFilters: () => void;
   getFilteredTasks: () => Task[];
+  // Realtime
+  subscribeToRealtime: () => void;
+  unsubscribeFromRealtime: () => void;
+}
+
+// Module-level channel ref (outside store) so it survives re-renders
+let realtimeChannel: ReturnType<ReturnType<typeof createClient>["channel"]> | null = null;
+
+// Helper: notify Telegram about a web-side task action (fire-and-forget)
+async function notifyTelegram(task: Partial<Task>, action: "created" | "completed") {
+  try {
+    const supabase = createClient();
+    await supabase.functions.invoke("telegram-notify", {
+      body: { task, action },
+    });
+  } catch {
+    // Non-critical — never block the UI
+  }
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -94,6 +112,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
 
     await get().fetchTasks();
+    notifyTelegram(data, "created");
     return data;
   },
 
@@ -133,6 +152,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           : t
       ),
     }));
+    // Notify Telegram when a task is marked complete from the web
+    if (!isCompleted) {
+      notifyTelegram(task, "completed");
+    }
   },
 
   reorderTasks: async (tasks) => {
@@ -198,6 +221,31 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   setFilters: (filters) => set((state) => ({ filters: { ...state.filters, ...filters } })),
   clearFilters: () => set({ filters: { status: "all", priority: "all", category: "all", search: "", tagIds: [] } }),
+
+  // ── Realtime (Telegram → Web live sync) ──────────────────────────────────
+  subscribeToRealtime: () => {
+    if (realtimeChannel) return; // already subscribed
+    const supabase = createClient();
+    realtimeChannel = supabase
+      .channel("tasks-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tasks" },
+        () => {
+          // Refetch on any INSERT / UPDATE / DELETE so Telegram-created tasks
+          // appear instantly without a manual page refresh.
+          get().fetchTasks();
+        },
+      )
+      .subscribe();
+  },
+
+  unsubscribeFromRealtime: () => {
+    if (!realtimeChannel) return;
+    const supabase = createClient();
+    supabase.removeChannel(realtimeChannel);
+    realtimeChannel = null;
+  },
 
   getFilteredTasks: () => {
     const { tasks, filters } = get();

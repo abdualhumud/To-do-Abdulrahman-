@@ -17,9 +17,12 @@ export default function DashboardPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showPomodoro, setShowPomodoro] = useState(false);
 
+  const { subscribeToRealtime, unsubscribeFromRealtime } = useTaskStore();
+
   useEffect(() => {
     fetchTasks();
     fetchTags();
+    subscribeToRealtime();
     // Keyboard shortcut: N = new task
     function handleKey(e: KeyboardEvent) {
       if (e.key === "n" && !e.ctrlKey && !e.metaKey && !(e.target instanceof HTMLInputElement) && !(e.target instanceof HTMLTextAreaElement)) {
@@ -28,8 +31,11 @@ export default function DashboardPage() {
       }
     }
     window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [fetchTasks, fetchTags]);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      unsubscribeFromRealtime();
+    };
+  }, [fetchTasks, fetchTags, subscribeToRealtime, unsubscribeFromRealtime]);
 
   function handleEditTask(task: Task) {
     setEditingTask(task);
