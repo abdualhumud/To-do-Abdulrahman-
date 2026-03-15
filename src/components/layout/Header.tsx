@@ -1,32 +1,28 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { Sun, Moon, LogOut, Bell, User } from "lucide-react";
+import { Sun, Moon, LogOut } from "lucide-react";
 import toast from "react-hot-toast";
 import { useState } from "react";
-import type { User as SupabaseUser } from "@supabase/supabase-js";
+import { localUser, type LocalUser } from "@/lib/local-store";
 
 interface HeaderProps {
-  user: SupabaseUser;
-  profile: { full_name: string | null; avatar_url: string | null } | null;
+  user: LocalUser;
 }
 
-export function Header({ user, profile }: HeaderProps) {
+export function Header({ user }: HeaderProps) {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
-  async function handleLogout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+  function handleLogout() {
+    localUser.clear();
     toast.success("Logged out");
     router.push("/login");
-    router.refresh();
   }
 
-  const displayName = profile?.full_name || user.email?.split("@")[0] || "User";
+  const displayName = user.name || user.email?.split("@")[0] || "User";
   const initials = displayName
     .split(" ")
     .map((n: string) => n[0])
@@ -59,14 +55,11 @@ export function Header({ user, profile }: HeaderProps) {
             className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-lg hover:bg-secondary transition-colors"
           >
             <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center text-xs font-bold text-white">
-              {profile?.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={profile.avatar_url} alt={displayName} className="w-full h-full object-cover rounded-lg" />
-              ) : (
-                initials
-              )}
+              {initials}
             </div>
-            <span className="text-sm font-medium text-base-fg hidden sm:block">{displayName.split(" ")[0]}</span>
+            <span className="text-sm font-medium text-base-fg hidden sm:block">
+              {displayName.split(" ")[0]}
+            </span>
           </button>
 
           {showUserMenu && (
@@ -75,7 +68,9 @@ export function Header({ user, profile }: HeaderProps) {
               <div className="absolute right-0 top-full mt-2 w-48 card shadow-lg z-50 p-1 animate-fade-in">
                 <div className="px-3 py-2 border-b border-base mb-1">
                   <p className="text-sm font-medium text-base-fg truncate">{displayName}</p>
-                  <p className="text-xs text-muted-fg truncate">{user.email}</p>
+                  {user.email && (
+                    <p className="text-xs text-muted-fg truncate">{user.email}</p>
+                  )}
                 </div>
                 <button
                   onClick={handleLogout}

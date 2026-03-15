@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { Habit, HabitCompletion } from "@/types";
-import { createClient } from "@/lib/supabase/client";
+import { localHabits, localCompletions, localUser } from "@/lib/local-store";
 
 interface HabitStore {
   habits: Habit[];
@@ -16,59 +16,96 @@ interface HabitStore {
   isCompletedToday: (habit: Habit) => boolean;
 }
 
+function uuid() {
+  return crypto.randomUUID();
+}
+
+function now() {
+  return new Date().toISOString();
+}
+
+function sevenDaysAgo() {
+  return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+}
+
 export const useHabitStore = create<HabitStore>((set, get) => ({
   habits: [],
   isLoading: false,
 
   fetchHabits: async () => {
-    const supabase = createClient();
     set({ isLoading: true });
-    const today = new Date().toISOString().split("T")[0];
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const cutoff = sevenDaysAgo();
+    const allHabits: Habit[] = localHabits.get();
+    const allCompletions: HabitCompletion[] = localCompletions.get();
 
-    const { data } = await supabase
-      .from("habits")
-      .select(`*, completions:habit_completions(*)`)
-      .gte("habit_completions.completed_at", sevenDaysAgo)
-      .order("created_at", { ascending: true });
+    // Attach recent completions to each habit (last 7 days)
+    const habits = allHabits.map((h) => ({
+      ...h,
+      completions: allCompletions.filter(
+        (c) => c.habit_id === h.id && c.completed_at >= cutoff
+      ),
+    }));
 
-    set({ habits: data || [], isLoading: false });
+    set({ habits, isLoading: false });
   },
 
   createHabit: async (habit) => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = localUser.get();
     if (!user) return;
-    await supabase.from("habits").insert({ ...habit, user_id: user.id });
+
+    const newHabit: Habit = {
+      id: uuid(),
+      user_id: user.id,
+      title: habit.title || "",
+      description: habit.description ?? null,
+      icon: habit.icon || "⭐",
+      color: habit.color || "#6366f1",
+      frequency: habit.frequency || "daily",
+      target_count: habit.target_count || 1,
+      created_at: now(),
+      completions: [],
+    };
+
+    const habits = [...localHabits.get(), newHabit];
+    localHabits.set(habits);
     await get().fetchHabits();
   },
 
   updateHabit: async (id, updates) => {
-    const supabase = createClient();
-    await supabase.from("habits").update(updates).eq("id", id);
+    const habits = localHabits.get().map((h: Habit) =>
+      h.id === id ? { ...h, ...updates } : h
+    );
+    localHabits.set(habits);
     await get().fetchHabits();
   },
 
   deleteHabit: async (id) => {
-    const supabase = createClient();
-    await supabase.from("habits").delete().eq("id", id);
+    localHabits.set(localHabits.get().filter((h: Habit) => h.id !== id));
+    // Also remove completions for this habit
+    localCompletions.set(
+      localCompletions.get().filter((c: HabitCompletion) => c.habit_id !== id)
+    );
     set((state) => ({ habits: state.habits.filter((h) => h.id !== id) }));
   },
 
   toggleHabitCompletion: async (habitId, date) => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = localUser.get();
     if (!user) return;
 
-    const habit = get().habits.find((h) => h.id === habitId);
-    const isCompleted = habit?.completions?.some((c) => c.completed_at === date);
+    const completions: HabitCompletion[] = localCompletions.get();
+    const existing = completions.find(
+      (c) => c.habit_id === habitId && c.completed_at === date
+    );
 
-    if (isCompleted) {
-      await supabase.from("habit_completions").delete()
-        .eq("habit_id", habitId).eq("completed_at", date);
+    if (existing) {
+      localCompletions.set(completions.filter((c) => c !== existing));
     } else {
-      await supabase.from("habit_completions").insert({ habit_id: habitId, user_id: user.id, completed_at: date });
+      localCompletions.set([
+        ...completions,
+        { id: uuid(), habit_id: habitId, user_id: user.id, completed_at: date, notes: null },
+      ]);
     }
+
     await get().fetchHabits();
   },
 

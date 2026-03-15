@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { Task, SubTask, Tag } from "@/types";
-import { createClient } from "@/lib/supabase/client";
+import { localTasks, localTags, localUser } from "@/lib/local-store";
 
 interface TaskFilters {
   status: string;
@@ -35,24 +35,17 @@ interface TaskStore {
   setFilters: (filters: Partial<TaskFilters>) => void;
   clearFilters: () => void;
   getFilteredTasks: () => Task[];
-  // Realtime
+  // Realtime stubs (no-op in localStorage mode)
   subscribeToRealtime: () => void;
   unsubscribeFromRealtime: () => void;
 }
 
-// Module-level channel ref (outside store) so it survives re-renders
-let realtimeChannel: ReturnType<ReturnType<typeof createClient>["channel"]> | null = null;
+function uuid() {
+  return crypto.randomUUID();
+}
 
-// Helper: notify Telegram about a web-side task action (fire-and-forget)
-async function notifyTelegram(task: Partial<Task>, action: "created" | "completed") {
-  try {
-    const supabase = createClient();
-    await supabase.functions.invoke("telegram-notify", {
-      body: { task, action },
-    });
-  } catch {
-    // Non-critical — never block the UI
-  }
+function now() {
+  return new Date().toISOString();
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -63,189 +56,149 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   error: null,
 
   fetchTasks: async () => {
-    const supabase = createClient();
     set({ isLoading: true, error: null });
-    try {
-      const { data, error } = await supabase
-        .from("tasks")
-        .select(`
-          *,
-          task_tags(tag:tags(*)),
-          subtasks(*)
-        `)
-        .order("order_index", { ascending: true })
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      const tasks = (data || []).map((t) => ({
-        ...t,
-        tags: t.task_tags?.map((tt: { tag: Tag }) => tt.tag) || [],
-        subtasks: t.subtasks?.sort((a: SubTask, b: SubTask) => a.order_index - b.order_index) || [],
-      }));
-      set({ tasks, isLoading: false });
-    } catch (err) {
-      set({ error: (err as Error).message, isLoading: false });
-    }
+    const tasks: Task[] = localTasks.get();
+    set({ tasks, isLoading: false });
   },
 
   fetchTags: async () => {
-    const supabase = createClient();
-    const { data } = await supabase.from("tags").select("*").order("name");
-    set({ tags: data || [] });
+    const tags: Tag[] = localTags.get();
+    set({ tags });
   },
 
   createTask: async (task, tagIds = []) => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = localUser.get();
     if (!user) return null;
 
-    const { data, error } = await supabase
-      .from("tasks")
-      .insert({ ...task, user_id: user.id })
-      .select()
-      .single();
+    const allTags: Tag[] = localTags.get();
+    const tags = allTags.filter((t) => tagIds.includes(t.id));
 
-    if (error || !data) return null;
+    const newTask: Task = {
+      id: uuid(),
+      user_id: user.id,
+      title: task.title || "",
+      description: task.description ?? null,
+      status: task.status || "pending",
+      priority: task.priority || "medium",
+      category: task.category || "personal",
+      due_date: task.due_date ?? null,
+      reminder_at: task.reminder_at ?? null,
+      order_index: get().tasks.length,
+      completed_at: null,
+      created_at: now(),
+      updated_at: now(),
+      tags,
+      subtasks: [],
+    };
 
-    if (tagIds.length > 0) {
-      await supabase.from("task_tags").insert(tagIds.map((tag_id) => ({ task_id: data.id, tag_id })));
-    }
-
-    await get().fetchTasks();
-    notifyTelegram(data, "created");
-    return data;
+    const tasks = [...get().tasks, newTask];
+    localTasks.set(tasks);
+    set({ tasks });
+    return newTask;
   },
 
   updateTask: async (id, updates, tagIds) => {
-    const supabase = createClient();
-    await supabase.from("tasks").update(updates).eq("id", id);
-
-    if (tagIds !== undefined) {
-      await supabase.from("task_tags").delete().eq("task_id", id);
-      if (tagIds.length > 0) {
-        await supabase.from("task_tags").insert(tagIds.map((tag_id) => ({ task_id: id, tag_id })));
-      }
-    }
-
-    await get().fetchTasks();
+    const allTags: Tag[] = localTags.get();
+    const tasks = get().tasks.map((t) => {
+      if (t.id !== id) return t;
+      const tags = tagIds !== undefined ? allTags.filter((tg) => tagIds.includes(tg.id)) : t.tags;
+      return { ...t, ...updates, tags, updated_at: now() };
+    });
+    localTasks.set(tasks);
+    set({ tasks });
   },
 
   deleteTask: async (id) => {
-    const supabase = createClient();
-    await supabase.from("tasks").delete().eq("id", id);
-    set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
+    const tasks = get().tasks.filter((t) => t.id !== id);
+    localTasks.set(tasks);
+    set({ tasks });
   },
 
   toggleTask: async (id) => {
-    const task = get().tasks.find((t) => t.id === id);
-    if (!task) return;
-    const supabase = createClient();
-    const isCompleted = task.status === "completed";
-    await supabase.from("tasks").update({
-      status: isCompleted ? "pending" : "completed",
-      completed_at: isCompleted ? null : new Date().toISOString(),
-    }).eq("id", id);
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === id
-          ? { ...t, status: isCompleted ? "pending" : "completed", completed_at: isCompleted ? null : new Date().toISOString() }
-          : t
-      ),
-    }));
-    // Notify Telegram when a task is marked complete from the web
-    if (!isCompleted) {
-      notifyTelegram(task, "completed");
-    }
+    const tasks = get().tasks.map((t) => {
+      if (t.id !== id) return t;
+      const isCompleted = t.status === "completed";
+      return {
+        ...t,
+        status: isCompleted ? "pending" : "completed",
+        completed_at: isCompleted ? null : now(),
+        updated_at: now(),
+      } as Task;
+    });
+    localTasks.set(tasks);
+    set({ tasks });
   },
 
   reorderTasks: async (tasks) => {
-    const supabase = createClient();
-    set({ tasks });
-    const updates = tasks.map((t, i) => ({ id: t.id, order_index: i, user_id: t.user_id, title: t.title, status: t.status, priority: t.priority, category: t.category }));
-    await Promise.all(updates.map((u) => supabase.from("tasks").update({ order_index: u.order_index }).eq("id", u.id)));
+    const reordered = tasks.map((t, i) => ({ ...t, order_index: i }));
+    localTasks.set(reordered);
+    set({ tasks: reordered });
   },
 
   createTag: async (tag) => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = localUser.get();
     if (!user) return null;
-    const { data, error } = await supabase.from("tags").insert({ ...tag, user_id: user.id }).select().single();
-    if (error || !data) return null;
-    set((state) => ({ tags: [...state.tags, data] }));
-    return data;
+    const newTag: Tag = {
+      id: uuid(),
+      user_id: user.id,
+      name: tag.name || "",
+      color: tag.color || "#6366f1",
+    };
+    const tags = [...get().tags, newTag];
+    localTags.set(tags);
+    set({ tags });
+    return newTag;
   },
 
   deleteTag: async (id) => {
-    const supabase = createClient();
-    await supabase.from("tags").delete().eq("id", id);
-    set((state) => ({ tags: state.tags.filter((t) => t.id !== id) }));
+    const tags = get().tags.filter((t) => t.id !== id);
+    localTags.set(tags);
+    // Remove tag from tasks
+    const tasks = get().tasks.map((t) => ({ ...t, tags: t.tags?.filter((tg) => tg.id !== id) }));
+    localTasks.set(tasks);
+    set({ tags, tasks });
   },
 
   createSubTask: async (taskId, title) => {
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from("subtasks")
-      .insert({ task_id: taskId, title, order_index: 0 })
-      .select()
-      .single();
-    if (error || !data) return null;
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === taskId ? { ...t, subtasks: [...(t.subtasks || []), data] } : t
-      ),
-    }));
-    return data;
+    const newSub: SubTask = {
+      id: uuid(),
+      task_id: taskId,
+      title,
+      completed: false,
+      order_index: 0,
+      created_at: now(),
+    };
+    const tasks = get().tasks.map((t) =>
+      t.id === taskId ? { ...t, subtasks: [...(t.subtasks || []), newSub] } : t
+    );
+    localTasks.set(tasks);
+    set({ tasks });
+    return newSub;
   },
 
   toggleSubTask: async (subtaskId, taskId, completed) => {
-    const supabase = createClient();
-    await supabase.from("subtasks").update({ completed }).eq("id", subtaskId);
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === taskId
-          ? { ...t, subtasks: t.subtasks?.map((s) => s.id === subtaskId ? { ...s, completed } : s) }
-          : t
-      ),
-    }));
+    const tasks = get().tasks.map((t) =>
+      t.id === taskId
+        ? { ...t, subtasks: t.subtasks?.map((s) => s.id === subtaskId ? { ...s, completed } : s) }
+        : t
+    );
+    localTasks.set(tasks);
+    set({ tasks });
   },
 
   deleteSubTask: async (id, taskId) => {
-    const supabase = createClient();
-    await supabase.from("subtasks").delete().eq("id", id);
-    set((state) => ({
-      tasks: state.tasks.map((t) =>
-        t.id === taskId ? { ...t, subtasks: t.subtasks?.filter((s) => s.id !== id) } : t
-      ),
-    }));
+    const tasks = get().tasks.map((t) =>
+      t.id === taskId ? { ...t, subtasks: t.subtasks?.filter((s) => s.id !== id) } : t
+    );
+    localTasks.set(tasks);
+    set({ tasks });
   },
 
   setFilters: (filters) => set((state) => ({ filters: { ...state.filters, ...filters } })),
   clearFilters: () => set({ filters: { status: "all", priority: "all", category: "all", search: "", tagIds: [] } }),
 
-  // ── Realtime (Telegram → Web live sync) ──────────────────────────────────
-  subscribeToRealtime: () => {
-    if (realtimeChannel) return; // already subscribed
-    const supabase = createClient();
-    realtimeChannel = supabase
-      .channel("tasks-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tasks" },
-        () => {
-          // Refetch on any INSERT / UPDATE / DELETE so Telegram-created tasks
-          // appear instantly without a manual page refresh.
-          get().fetchTasks();
-        },
-      )
-      .subscribe();
-  },
-
-  unsubscribeFromRealtime: () => {
-    if (!realtimeChannel) return;
-    const supabase = createClient();
-    supabase.removeChannel(realtimeChannel);
-    realtimeChannel = null;
-  },
+  subscribeToRealtime: () => { /* no-op in localStorage mode */ },
+  unsubscribeFromRealtime: () => { /* no-op in localStorage mode */ },
 
   getFilteredTasks: () => {
     const { tasks, filters } = get();
