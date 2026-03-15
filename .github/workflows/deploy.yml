@@ -1,20 +1,28 @@
 name: Deploy to GitHub Pages
 
+# ─── Triggers ─────────────────────────────────────────────────────────────────
+# Deploys automatically on push to main (production) or the active
+# feature branch.  You can also trigger a manual deploy from the
+# Actions tab using "Run workflow".
 on:
   push:
     branches:
       - main
+      - claude/build-todo-app-BLpsC
   workflow_dispatch:
 
+# ─── Permissions ──────────────────────────────────────────────────────────────
 permissions:
   contents: read
   pages: write
   id-token: write
 
+# Prevent multiple concurrent deploys
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
+# ─── Jobs ─────────────────────────────────────────────────────────────────────
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,12 +41,16 @@ jobs:
 
       - name: Build
         env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          NEXT_PUBLIC_APP_URL: https://abdualhumud.github.io/To-do-Abdulrahman-
+          # App runs in localStorage-only mode — no Supabase account needed.
+          # These placeholders satisfy the build; they are NOT used at runtime.
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          NEXT_PUBLIC_APP_URL: https://${{ github.repository_owner }}.github.io/To-do-Abdulrahman-
+          # Optional: set this secret in GitHub if you wire up the Telegram bot later.
+          NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${{ secrets.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME }}
         run: npm run build
 
-      - name: Upload artifact
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./out

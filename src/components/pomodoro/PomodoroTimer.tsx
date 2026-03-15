@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Play, Pause, RotateCcw, Coffee, Zap } from "lucide-react";
+import { Play, Pause, RotateCcw, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import toast from "react-hot-toast";
 
 type TimerMode = "work" | "short_break" | "long_break";
@@ -19,34 +18,19 @@ export function PomodoroTimer() {
   const [timeLeft, setTimeLeft] = useState(MODES.work.duration);
   const [running, setRunning] = useState(false);
   const [sessions, setSessions] = useState(0);
-  const [sessionStart, setSessionStart] = useState<Date | null>(null);
 
   const totalTime = MODES[mode].duration;
   const progress = ((totalTime - timeLeft) / totalTime) * 100;
   const circumference = 2 * Math.PI * 54;
 
-  const handleComplete = useCallback(async () => {
+  const handleComplete = useCallback(() => {
     setRunning(false);
     if (mode === "work") setSessions((s) => s + 1);
-
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user && sessionStart) {
-      await supabase.from("pomodoro_sessions").insert({
-        user_id: user.id,
-        duration: totalTime,
-        type: mode,
-        completed: true,
-        started_at: sessionStart.toISOString(),
-        ended_at: new Date().toISOString(),
-      });
-    }
-
     toast.success(
       mode === "work" ? "🎉 Focus session done! Take a break." : "⚡ Break done! Back to work.",
       { duration: 5000 }
     );
-  }, [mode, sessionStart, totalTime]);
+  }, [mode]);
 
   useEffect(() => {
     if (!running) return;
@@ -67,18 +51,15 @@ export function PomodoroTimer() {
     setMode(newMode);
     setTimeLeft(MODES[newMode].duration);
     setRunning(false);
-    setSessionStart(null);
   }
 
   function handleToggle() {
-    if (!running && !sessionStart) setSessionStart(new Date());
     setRunning(!running);
   }
 
   function handleReset() {
     setTimeLeft(MODES[mode].duration);
     setRunning(false);
-    setSessionStart(null);
   }
 
   const mins = Math.floor(timeLeft / 60).toString().padStart(2, "0");
