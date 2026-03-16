@@ -84,9 +84,13 @@ export default function LoginPage() {
             </Link>
           </p>
 
-          <p className="text-center text-xs text-muted-fg mt-4">
-            Your data is stored locally in your browser — no account needed.
-          </p>
+          <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <p className="text-xs text-amber-800 dark:text-amber-300 text-center leading-relaxed">
+              <span className="font-semibold">Single-device app:</span> Your data is stored only in
+              this browser. Clearing browser data or signing in on another device will not show your
+              tasks — export a backup from Settings to keep your data safe.
+            </p>
+          </div>
         </div>
       </div>
     </div>

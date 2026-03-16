@@ -93,9 +93,13 @@ export default function RegisterPage() {
             </Link>
           </p>
 
-          <p className="text-center text-xs text-muted-fg mt-4">
-            Your data is stored locally in your browser — no server required.
-          </p>
+          <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <p className="text-xs text-amber-800 dark:text-amber-300 text-center leading-relaxed">
+              <span className="font-semibold">Single-device app:</span> Your data is stored only in
+              this browser with session encryption. Clearing browser data removes all tasks — export
+              a backup from Settings to keep your data safe.
+            </p>
+          </div>
         </div>
       </div>
     </div>

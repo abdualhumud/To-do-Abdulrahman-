@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { Sun, Moon, LogOut } from "lucide-react";
+import { Sun, Moon, LogOut, AlertTriangle, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useState } from "react";
 import { localUser, type LocalUser } from "@/lib/local-store";
@@ -15,10 +15,17 @@ export function Header({ user }: HeaderProps) {
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   function handleLogout() {
+    setShowUserMenu(false);
+    setShowLogoutConfirm(true);
+  }
+
+  function confirmLogout() {
     localUser.clear();
-    toast.success("Logged out");
+    setShowLogoutConfirm(false);
+    toast.success("Logged out — your data remains in this browser");
     router.push("/login");
   }
 
@@ -31,6 +38,42 @@ export function Header({ user }: HeaderProps) {
     .slice(0, 2);
 
   return (
+    <>
+      {/* Logout confirmation dialog */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-card border border-base rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 text-danger" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-base-fg">Sign out?</h2>
+                <p className="text-sm text-secondary-fg mt-1">
+                  Your tasks and data stay saved in this browser. Signing out only clears your session.
+                </p>
+              </div>
+              <button onClick={() => setShowLogoutConfirm(false)} className="ml-auto text-muted-fg hover:text-base-fg">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="btn-secondary px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogout}
+                className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 active:bg-red-800 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     <header className="h-16 border-b border-base bg-card flex items-center justify-between px-6">
       <div>
         <h1 className="text-sm font-semibold text-base-fg hidden md:block">
@@ -85,6 +128,7 @@ export function Header({ user }: HeaderProps) {
         </div>
       </div>
     </header>
+    </>
   );
 }
 

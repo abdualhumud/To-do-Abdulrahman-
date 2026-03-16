@@ -14,6 +14,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN")!;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+// Restrict CORS to the known app origin. Set APP_ORIGIN in Supabase secrets.
+// e.g. https://username.github.io
+const APP_ORIGIN = Deno.env.get("APP_ORIGIN") ?? "";
 
 const TG_API = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
@@ -25,14 +28,26 @@ async function sendMessage(chatId: number, text: string) {
   });
 }
 
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
+  // Only reflect the origin back if it matches our known app origin
+  const allowedOrigin = APP_ORIGIN && origin === APP_ORIGIN ? origin : "";
+  if (!allowedOrigin) return {};
+  return {
+    "Access-Control-Allow-Origin": allowedOrigin,
+    "Access-Control-Allow-Headers": "authorization, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, content-type",
-      },
-    });
+    const headers = corsHeaders(req);
+    if (!headers["Access-Control-Allow-Origin"]) {
+      return new Response("Forbidden", { status: 403 });
+    }
+    return new Response(null, { headers });
   }
 
   if (req.method !== "POST") return new Response("OK", { status: 200 });

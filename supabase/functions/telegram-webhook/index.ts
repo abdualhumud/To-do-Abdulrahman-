@@ -390,6 +390,58 @@ async function handleMessage(message: TelegramMessage) {
   );
 }
 
+// ─── Webhook Signature Verification ──────────────────────────────────────────
+
+/**
+ * Verifies that the incoming request is genuinely from Telegram.
+ * Telegram signs webhooks using HMAC-SHA256 with a secret derived from the bot token.
+ *
+ * Header: X-Telegram-Bot-Api-Secret-Token  (set when calling setWebhook)
+ * OR:     X-Telegram-Bot-Api-Secret-Hash   (HMAC-SHA256 of the raw body)
+ *
+ * We use the simpler secret-token approach: set TELEGRAM_WEBHOOK_SECRET in env
+ * and pass it to setWebhook's `secret_token` parameter.
+ */
+const WEBHOOK_SECRET = Deno.env.get("TELEGRAM_WEBHOOK_SECRET");
+
+async function verifyTelegramSignature(req: Request, rawBody: string): Promise<boolean> {
+  // If no secret is configured, skip verification (development mode).
+  // In production always set TELEGRAM_WEBHOOK_SECRET.
+  if (!WEBHOOK_SECRET) {
+    console.warn("TELEGRAM_WEBHOOK_SECRET not set — webhook signature verification disabled");
+    return true;
+  }
+
+  // Method 1: simple secret token header (recommended)
+  const secretTokenHeader = req.headers.get("X-Telegram-Bot-Api-Secret-Token");
+  if (secretTokenHeader) {
+    return secretTokenHeader === WEBHOOK_SECRET;
+  }
+
+  // Method 2: HMAC-SHA256 of raw body using SHA256(bot_token) as key
+  const hashHeader = req.headers.get("X-Telegram-Bot-Api-Secret-Hash");
+  if (hashHeader && BOT_TOKEN) {
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(BOT_TOKEN);
+    const msgData = encoder.encode(rawBody);
+
+    const hashKey = await crypto.subtle.importKey(
+      "raw",
+      await crypto.subtle.digest("SHA-256", keyData),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    const sigBytes = Uint8Array.from(
+      hashHeader.match(/.{2}/g)!.map((h) => parseInt(h, 16)),
+    );
+    return crypto.subtle.verify("HMAC", hashKey, sigBytes, msgData);
+  }
+
+  // No valid signature present
+  return false;
+}
+
 // ─── Entry Point ──────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -397,8 +449,18 @@ Deno.serve(async (req) => {
     return new Response("TaskFlow Telegram Bot ✓", { status: 200 });
   }
 
+  // Read body once so we can verify signature AND parse JSON
+  const rawBody = await req.text();
+
+  // Reject requests that don't come from Telegram
+  const isValid = await verifyTelegramSignature(req, rawBody);
+  if (!isValid) {
+    console.error("Webhook signature verification failed — rejecting request");
+    return new Response("Unauthorized", { status: 401 });
+  }
+
   try {
-    const update = await req.json();
+    const update = JSON.parse(rawBody);
     if (update.message) {
       await handleMessage(update.message);
     }
