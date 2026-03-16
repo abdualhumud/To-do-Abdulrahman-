@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { localUser } from "@/lib/local-store";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { Settings, Sun, Moon, Monitor, User } from "lucide-react";
@@ -9,16 +9,8 @@ import toast from "react-hot-toast";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-
-  useEffect(() => {
-    const u = localUser.get();
-    if (u) {
-      setName(u.name);
-      setEmail(u.email || "");
-    }
-  }, []);
+  const [name, setName] = useState(() => localUser.get()?.name ?? "");
+  const [email, setEmail] = useState(() => localUser.get()?.email ?? "");
 
   function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();

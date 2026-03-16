@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Task, Priority, Category, Tag } from "@/types";
 import { useTaskStore } from "@/store/useTaskStore";
-import { X, Tag as TagIcon, Plus, Loader2 } from "lucide-react";
+import { X, Plus, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 

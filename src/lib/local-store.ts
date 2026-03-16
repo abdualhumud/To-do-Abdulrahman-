@@ -245,94 +245,87 @@ export const localUser = {
   clear: () => typeof window !== "undefined" && localStorage.removeItem(K.user),
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function validateArray<T>(raw: unknown[], schema: z.ZodType<T>): any[] {
+function validateArray<T>(raw: unknown[], schema: z.ZodType<T>): unknown[] {
   return raw
     .map((item) => schema.safeParse(item))
-    .filter((r) => r.success)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((r) => (r as any).data);
+    .filter((r): r is z.ZodSafeParseSuccess<T> => r.success)
+    .map((r) => r.data);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyArray = any[];
+
 export const localTasks = {
-  get: (): any[] => {
+  get: (): AnyArray => {
     const raw = readSync<unknown[]>(K.tasks, []);
     if (!Array.isArray(raw)) return [];
     return validateArray(raw, TaskSchema);
   },
-  getAsync: async (): Promise<any[]> => {  // eslint-disable-line @typescript-eslint/no-explicit-any
+  getAsync: async (): Promise<AnyArray> => {
     const raw = await readAsync<unknown[]>(K.tasks, []);
     if (!Array.isArray(raw)) return [];
     const validated = validateArray(raw, TaskSchema);
     _memCache.set(K.tasks, validated);
     return validated;
   },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  set: (v: any[]) => {
+  set: (v: AnyArray) => {
     const validated = validateArray(v, TaskSchema);
     writeAsync(K.tasks, validated);
   },
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const localTags = {
-  get: (): any[] => {
+  get: (): AnyArray => {
     const raw = readSync<unknown[]>(K.tags, []);
     if (!Array.isArray(raw)) return [];
     return validateArray(raw, TagSchema);
   },
-  getAsync: async (): Promise<any[]> => {  // eslint-disable-line @typescript-eslint/no-explicit-any
+  getAsync: async (): Promise<AnyArray> => {
     const raw = await readAsync<unknown[]>(K.tags, []);
     if (!Array.isArray(raw)) return [];
     const validated = validateArray(raw, TagSchema);
     _memCache.set(K.tags, validated);
     return validated;
   },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  set: (v: any[]) => {
+  set: (v: AnyArray) => {
     const validated = validateArray(v, TagSchema);
     writeAsync(K.tags, validated);
   },
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const localHabits = {
-  get: (): any[] => {
+  get: (): AnyArray => {
     const raw = readSync<unknown[]>(K.habits, []);
     if (!Array.isArray(raw)) return [];
     return validateArray(raw, HabitSchema);
   },
-  getAsync: async (): Promise<any[]> => {  // eslint-disable-line @typescript-eslint/no-explicit-any
+  getAsync: async (): Promise<AnyArray> => {
     const raw = await readAsync<unknown[]>(K.habits, []);
     if (!Array.isArray(raw)) return [];
     const validated = validateArray(raw, HabitSchema);
     _memCache.set(K.habits, validated);
     return validated;
   },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  set: (v: any[]) => {
+  set: (v: AnyArray) => {
     const validated = validateArray(v, HabitSchema);
     writeAsync(K.habits, validated);
   },
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const localCompletions = {
-  get: (): any[] => {
+  get: (): AnyArray => {
     const raw = readSync<unknown[]>(K.completions, []);
     if (!Array.isArray(raw)) return [];
     return validateArray(raw, CompletionSchema);
   },
-  getAsync: async (): Promise<any[]> => {  // eslint-disable-line @typescript-eslint/no-explicit-any
+  getAsync: async (): Promise<AnyArray> => {
     const raw = await readAsync<unknown[]>(K.completions, []);
     if (!Array.isArray(raw)) return [];
     const validated = validateArray(raw, CompletionSchema);
     _memCache.set(K.completions, validated);
     return validated;
   },
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  set: (v: any[]) => {
+  set: (v: AnyArray) => {
     const validated = validateArray(v, CompletionSchema);
     writeAsync(K.completions, validated);
   },
