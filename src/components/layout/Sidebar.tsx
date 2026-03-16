@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CheckCircle, LayoutDashboard, BarChart2, Flame, Settings, Plus } from "lucide-react";
+import { CheckCircle, LayoutDashboard, BarChart2, Flame, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },

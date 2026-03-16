@@ -2,7 +2,7 @@
 
 import { useTaskStore } from "@/store/useTaskStore";
 import { useMemo } from "react";
-import { format, subDays, startOfWeek, eachDayOfInterval } from "date-fns";
+import { format, subDays, startOfWeek, addDays, eachDayOfInterval } from "date-fns";
 import { cn } from "@/lib/utils";
 
 export function WeeklyHeatmap() {
@@ -15,7 +15,9 @@ export function WeeklyHeatmap() {
     for (let w = 3; w >= 0; w--) {
       const weekEnd = subDays(today, w * 7);
       const weekStart = startOfWeek(weekEnd, { weekStartsOn: 1 });
-      const days = eachDayOfInterval({ start: weekStart, end: subDays(weekEnd, w === 0 ? 0 : 0) }).slice(0, 7);
+      // For current week (w=0) cap at today; for past weeks show the full Mon–Sun span
+      const intervalEnd = w === 0 ? today : addDays(weekStart, 6);
+      const days = eachDayOfInterval({ start: weekStart, end: intervalEnd }).slice(0, 7);
       weeks.push(
         days.map((date) => {
           const dateStr = format(date, "yyyy-MM-dd");

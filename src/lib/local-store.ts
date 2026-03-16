@@ -124,11 +124,10 @@ if (typeof window !== "undefined") {
   initEncryptionKey();
 }
 
-function encryptSync(plaintext: string): string {
-  // Encryption is async; writes are fire-and-forget encrypted via encryptAndWrite()
-  // This is a sync fallback that marks plaintext clearly (no prefix = unencrypted)
-  return plaintext;
-}
+// ─── Write-through in-memory cache ────────────────────────────────────────────
+// Populated synchronously on every write so that readSync() always returns the
+// latest value even when the localStorage copy is encrypted (async-only).
+const _memCache = new Map<string, unknown>();
 
 async function encryptAndWrite(storageKey: string, value: unknown): Promise<void> {
   if (typeof window === "undefined") return;
@@ -168,19 +167,25 @@ async function decryptOrRead(raw: string): Promise<string> {
 
 // ─── Generic helpers ──────────────────────────────────────────────────────────
 
-/** Synchronous read — used for the public .get() API. Validates with Zod. */
+/** Synchronous read — checks in-memory cache first, then localStorage (plain JSON only). */
 function readSync<T>(storageKey: string, fallback: T): T {
+  // In-memory cache is always authoritative (populated by writeAsync on every write)
+  if (_memCache.has(storageKey)) {
+    return _memCache.get(storageKey) as T;
+  }
   if (typeof window === "undefined") return fallback;
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return fallback;
     if (raw.startsWith(ENC_PREFIX)) {
-      // Encrypted data — we can't decrypt synchronously.
-      // Schedule a background decrypt and for now return cached value or fallback.
-      // On next render cycle (after key init) this will resolve correctly.
+      // Encrypted data not yet in cache (page just loaded). The caller must use
+      // getAsync() / an async fetch function to decrypt and populate the cache.
       return fallback;
     }
-    return JSON.parse(raw) as T;
+    // Legacy plain JSON — parse and warm the cache
+    const value = JSON.parse(raw) as T;
+    _memCache.set(storageKey, value);
+    return value;
   } catch {
     return fallback;
   }
@@ -199,10 +204,13 @@ async function readAsync<T>(storageKey: string, fallback: T): Promise<T> {
   }
 }
 
-/** Fire-and-forget encrypted write. Caller does not need to await. */
+/** Fire-and-forget encrypted write. Immediately updates in-memory cache so
+ *  readSync() callers see the new value without waiting for async encryption. */
 function writeAsync(storageKey: string, value: unknown): void {
+  // Sync cache update — makes readSync() work immediately after any write
+  _memCache.set(storageKey, value);
   encryptAndWrite(storageKey, value).catch(() => {
-    // Last-resort sync write if async fails
+    // Last-resort sync write if async encryption fails
     if (typeof window !== "undefined") {
       try {
         localStorage.setItem(storageKey, JSON.stringify(value));
@@ -238,23 +246,31 @@ export const localUser = {
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function validateArray<T>(raw: unknown[], schema: z.ZodType<T>): any[] {
+  return raw
+    .map((item) => schema.safeParse(item))
+    .filter((r) => r.success)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((r) => (r as any).data);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const localTasks = {
   get: (): any[] => {
     const raw = readSync<unknown[]>(K.tasks, []);
     if (!Array.isArray(raw)) return [];
-    return raw
-      .map((item) => TaskSchema.safeParse(item))
-      .filter((r) => r.success)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r) => (r as any).data);
+    return validateArray(raw, TaskSchema);
+  },
+  getAsync: async (): Promise<any[]> => {  // eslint-disable-line @typescript-eslint/no-explicit-any
+    const raw = await readAsync<unknown[]>(K.tasks, []);
+    if (!Array.isArray(raw)) return [];
+    const validated = validateArray(raw, TaskSchema);
+    _memCache.set(K.tasks, validated);
+    return validated;
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   set: (v: any[]) => {
-    const validated = v
-      .map((item) => TaskSchema.safeParse(item))
-      .filter((r) => r.success)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r) => (r as any).data);
+    const validated = validateArray(v, TaskSchema);
     writeAsync(K.tasks, validated);
   },
 };
@@ -264,19 +280,18 @@ export const localTags = {
   get: (): any[] => {
     const raw = readSync<unknown[]>(K.tags, []);
     if (!Array.isArray(raw)) return [];
-    return raw
-      .map((item) => TagSchema.safeParse(item))
-      .filter((r) => r.success)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r) => (r as any).data);
+    return validateArray(raw, TagSchema);
+  },
+  getAsync: async (): Promise<any[]> => {  // eslint-disable-line @typescript-eslint/no-explicit-any
+    const raw = await readAsync<unknown[]>(K.tags, []);
+    if (!Array.isArray(raw)) return [];
+    const validated = validateArray(raw, TagSchema);
+    _memCache.set(K.tags, validated);
+    return validated;
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   set: (v: any[]) => {
-    const validated = v
-      .map((item) => TagSchema.safeParse(item))
-      .filter((r) => r.success)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r) => (r as any).data);
+    const validated = validateArray(v, TagSchema);
     writeAsync(K.tags, validated);
   },
 };
@@ -286,19 +301,18 @@ export const localHabits = {
   get: (): any[] => {
     const raw = readSync<unknown[]>(K.habits, []);
     if (!Array.isArray(raw)) return [];
-    return raw
-      .map((item) => HabitSchema.safeParse(item))
-      .filter((r) => r.success)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r) => (r as any).data);
+    return validateArray(raw, HabitSchema);
+  },
+  getAsync: async (): Promise<any[]> => {  // eslint-disable-line @typescript-eslint/no-explicit-any
+    const raw = await readAsync<unknown[]>(K.habits, []);
+    if (!Array.isArray(raw)) return [];
+    const validated = validateArray(raw, HabitSchema);
+    _memCache.set(K.habits, validated);
+    return validated;
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   set: (v: any[]) => {
-    const validated = v
-      .map((item) => HabitSchema.safeParse(item))
-      .filter((r) => r.success)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r) => (r as any).data);
+    const validated = validateArray(v, HabitSchema);
     writeAsync(K.habits, validated);
   },
 };
@@ -308,19 +322,18 @@ export const localCompletions = {
   get: (): any[] => {
     const raw = readSync<unknown[]>(K.completions, []);
     if (!Array.isArray(raw)) return [];
-    return raw
-      .map((item) => CompletionSchema.safeParse(item))
-      .filter((r) => r.success)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r) => (r as any).data);
+    return validateArray(raw, CompletionSchema);
+  },
+  getAsync: async (): Promise<any[]> => {  // eslint-disable-line @typescript-eslint/no-explicit-any
+    const raw = await readAsync<unknown[]>(K.completions, []);
+    if (!Array.isArray(raw)) return [];
+    const validated = validateArray(raw, CompletionSchema);
+    _memCache.set(K.completions, validated);
+    return validated;
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   set: (v: any[]) => {
-    const validated = v
-      .map((item) => CompletionSchema.safeParse(item))
-      .filter((r) => r.success)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((r) => (r as any).data);
+    const validated = validateArray(v, CompletionSchema);
     writeAsync(K.completions, validated);
   },
 };

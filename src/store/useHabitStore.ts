@@ -35,8 +35,9 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   fetchHabits: async () => {
     set({ isLoading: true });
     const cutoff = sevenDaysAgo();
-    const allHabits: Habit[] = localHabits.get();
-    const allCompletions: HabitCompletion[] = localCompletions.get();
+    // Use async reads so encrypted localStorage data is decrypted on page load
+    const allHabits: Habit[] = await localHabits.getAsync();
+    const allCompletions: HabitCompletion[] = await localCompletions.getAsync();
 
     // Attach recent completions to each habit (last 7 days)
     const habits = allHabits.map((h) => ({

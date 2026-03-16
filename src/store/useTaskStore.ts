@@ -57,12 +57,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   fetchTasks: async () => {
     set({ isLoading: true, error: null });
-    const tasks: Task[] = localTasks.get();
+    // Use async read so encrypted localStorage data is decrypted on page load
+    const tasks: Task[] = await localTasks.getAsync();
     set({ tasks, isLoading: false });
   },
 
   fetchTags: async () => {
-    const tags: Tag[] = localTags.get();
+    // Use async read so encrypted localStorage data is decrypted on page load
+    const tags: Tag[] = await localTags.getAsync();
     set({ tags });
   },
 
@@ -206,8 +208,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (filters.status !== "all" && task.status !== filters.status) return false;
       if (filters.priority !== "all" && task.priority !== filters.priority) return false;
       if (filters.category !== "all" && task.category !== filters.category) return false;
-      if (filters.search && !task.title.toLowerCase().includes(filters.search.toLowerCase()) &&
-        !task.description?.toLowerCase().includes(filters.search.toLowerCase())) return false;
+      if (filters.search &&
+        !task.title.toLowerCase().includes(filters.search.toLowerCase()) &&
+        !(task.description?.toLowerCase().includes(filters.search.toLowerCase()) ?? false)) return false;
       if (filters.tagIds.length > 0) {
         const taskTagIds = task.tags?.map((t) => t.id) || [];
         if (!filters.tagIds.some((id) => taskTagIds.includes(id))) return false;
