@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { localUser } from "@/lib/local-store";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { Settings, Sun, Moon, Monitor, User } from "lucide-react";
+import { Settings, Sun, Moon, Monitor, User, Send, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+
+const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -117,6 +119,53 @@ export default function SettingsPage() {
             );
           })}
         </div>
+      </div>
+
+      {/* Telegram Integration */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Send className="w-4 h-4 text-secondary-fg" />
+          <h2 className="font-semibold text-base-fg">Telegram Bot</h2>
+        </div>
+
+        {BOT_USERNAME ? (
+          <>
+            <p className="text-sm text-secondary-fg">
+              Use the TaskFlow bot on Telegram to add tasks, set reminders, and check
+              your task list — all without opening the web app.
+            </p>
+
+            <a
+              href={`https://t.me/${BOT_USERNAME}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 btn-primary"
+            >
+              <ExternalLink className="w-4 h-4" />
+              Open @{BOT_USERNAME} on Telegram
+            </a>
+
+            <div className="bg-secondary/50 rounded-xl p-3 space-y-1 text-xs text-secondary-fg">
+              <p className="font-medium text-base-fg text-sm mb-2">Available commands:</p>
+              <p><code className="bg-base rounded px-1 py-0.5">/tasks</code> — list your pending tasks</p>
+              <p><code className="bg-base rounded px-1 py-0.5">/done 2</code> — mark task #2 complete</p>
+              <p className="pt-1">Or just <strong>send any text</strong> to create a task instantly.</p>
+              <p className="pt-1 text-muted-fg">
+                Smart format: <code className="bg-base rounded px-1 py-0.5">
+                  Buy groceries tomorrow at 6pm #personal !high
+                </code>
+              </p>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-secondary-fg">
+            Telegram bot not configured yet. Add{" "}
+            <code className="bg-secondary rounded px-1 py-0.5 text-xs">
+              NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
+            </code>{" "}
+            to GitHub Secrets and redeploy to enable this feature.
+          </p>
+        )}
       </div>
 
       {/* About */}
