@@ -1,12 +1,57 @@
 "use client";
 
 import { useTaskStore } from "@/store/useTaskStore";
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, X, ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 
-const STATUS_OPTIONS = ["all", "pending", "in_progress", "completed", "cancelled"];
+const STATUS_OPTIONS   = ["all", "pending", "in_progress", "completed", "cancelled"];
 const PRIORITY_OPTIONS = ["all", "urgent", "high", "medium", "low"];
 const CATEGORY_OPTIONS = ["all", "work", "personal", "health", "learning", "finance", "social", "other"];
+
+const STATUS_LABEL: Record<string, string> = {
+  all: "All", pending: "Pending", in_progress: "In Progress",
+  completed: "Done", cancelled: "Cancelled",
+};
+const PRIORITY_LABEL: Record<string, string> = {
+  all: "Any Priority", urgent: "🚨 Urgent", high: "🔴 High",
+  medium: "🟡 Medium", low: "🟢 Low",
+};
+const CATEGORY_LABEL: Record<string, string> = {
+  all: "All Categories", work: "💼 Work", personal: "👤 Personal",
+  health: "💪 Health", learning: "📚 Learning", finance: "💰 Finance",
+  social: "🤝 Social", other: "📌 Other",
+};
+
+function FilterSelect({
+  value, options, labels, onChange,
+}: {
+  value: string;
+  options: string[];
+  labels: Record<string, string>;
+  onChange: (v: string) => void;
+}) {
+  const isActive = value !== "all";
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          "appearance-none h-8 pl-3 pr-7 text-xs rounded-lg border font-medium outline-none transition-all cursor-pointer",
+          isActive
+            ? "bg-accent text-accent-fg border-primary/40"
+            : "bg-secondary text-secondary-fg border-base hover:border-primary/30"
+        )}
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>{labels[o] ?? o}</option>
+        ))}
+      </select>
+      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none text-current opacity-60" />
+    </div>
+  );
+}
 
 export function FilterBar() {
   const { filters, setFilters, clearFilters } = useTaskStore();
@@ -18,78 +63,83 @@ export function FilterBar() {
     filters.category !== "all" ||
     filters.search !== "";
 
+  const activeFilterCount = [
+    filters.status !== "all",
+    filters.priority !== "all",
+    filters.category !== "all",
+  ].filter(Boolean).length;
+
   return (
     <div className="flex-1 flex flex-col gap-2">
+      {/* Search + filter toggle row */}
       <div className="flex items-center gap-2">
-        {/* Search */}
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-fg" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-fg pointer-events-none" />
           <input
             type="text"
             value={filters.search}
             onChange={(e) => setFilters({ search: e.target.value })}
-            className="input-base pl-9 h-9 py-0"
-            placeholder="Search tasks..."
+            className="input-base pl-9 h-9 py-0 text-sm"
+            placeholder="Search tasks…"
           />
           {filters.search && (
             <button
               onClick={() => setFilters({ search: "" })}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-fg hover:text-base-fg"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-fg hover:text-base-fg transition-colors"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
-        {/* Filter toggle */}
         <button
           onClick={() => setShowFilters(!showFilters)}
-          className={`btn-secondary h-9 px-3 relative ${showFilters ? "bg-accent text-accent-fg" : ""}`}
+          className={cn(
+            "btn-secondary h-9 px-3 relative text-xs gap-1.5",
+            showFilters && "bg-accent text-accent-fg border-primary/40"
+          )}
         >
-          <SlidersHorizontal className="w-4 h-4" />
-          {hasActiveFilters && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-primary rounded-full" />
+          Filters
+          {activeFilterCount > 0 ? (
+            <span className="badge" style={{ fontSize: "0.6rem", minWidth: "1rem", height: "1rem" }}>
+              {activeFilterCount}
+            </span>
+          ) : (
+            <ChevronDown className={cn("w-3 h-3 transition-transform", showFilters && "rotate-180")} />
           )}
         </button>
 
         {hasActiveFilters && (
-          <button onClick={clearFilters} className="text-xs text-muted-fg hover:text-base-fg flex items-center gap-1">
+          <button
+            onClick={clearFilters}
+            className="text-xs text-muted-fg hover:text-danger flex items-center gap-1 transition-colors whitespace-nowrap"
+          >
             <X className="w-3 h-3" /> Clear
           </button>
         )}
       </div>
 
+      {/* Expanded filter row */}
       {showFilters && (
         <div className="flex flex-wrap gap-2 animate-slide-up">
-          <select
+          <FilterSelect
             value={filters.status}
-            onChange={(e) => setFilters({ status: e.target.value })}
-            className="input-base h-8 py-0 text-xs w-auto pr-7"
-          >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s === "all" ? "All Status" : s.replace("_", " ")}</option>
-            ))}
-          </select>
-
-          <select
+            options={STATUS_OPTIONS}
+            labels={STATUS_LABEL}
+            onChange={(v) => setFilters({ status: v })}
+          />
+          <FilterSelect
             value={filters.priority}
-            onChange={(e) => setFilters({ priority: e.target.value })}
-            className="input-base h-8 py-0 text-xs w-auto pr-7"
-          >
-            {PRIORITY_OPTIONS.map((p) => (
-              <option key={p} value={p}>{p === "all" ? "All Priority" : p}</option>
-            ))}
-          </select>
-
-          <select
+            options={PRIORITY_OPTIONS}
+            labels={PRIORITY_LABEL}
+            onChange={(v) => setFilters({ priority: v })}
+          />
+          <FilterSelect
             value={filters.category}
-            onChange={(e) => setFilters({ category: e.target.value })}
-            className="input-base h-8 py-0 text-xs w-auto pr-7"
-          >
-            {CATEGORY_OPTIONS.map((c) => (
-              <option key={c} value={c}>{c === "all" ? "All Category" : c}</option>
-            ))}
-          </select>
+            options={CATEGORY_OPTIONS}
+            labels={CATEGORY_LABEL}
+            onChange={(v) => setFilters({ category: v })}
+          />
         </div>
       )}
     </div>
