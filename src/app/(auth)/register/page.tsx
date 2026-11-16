@@ -3,25 +3,28 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { localUser } from "@/lib/local-store";
+import { hydrateLocalStore, localUser } from "@/lib/local-store";
+import { useLocalUser } from "@/lib/use-local-store";
 import { CheckCircle, User, Mail, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { ready, user } = useLocalUser();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already logged in
+  // Already signed in → go straight to the app
   useEffect(() => {
-    if (localUser.get()) router.replace("/dashboard");
-  }, [router]);
+    if (ready && user) router.replace("/dashboard");
+  }, [ready, user, router]);
 
-  function handleRegister(e: React.FormEvent) {
+  async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
+    await hydrateLocalStore();
 
     localUser.set({
       id: crypto.randomUUID(),
@@ -80,7 +83,7 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <button type="submit" disabled={loading || !name.trim()} className="btn-primary w-full justify-center py-3 mt-2">
+            <button type="submit" disabled={loading || !ready || !name.trim()} className="btn-primary w-full justify-center py-3 mt-2">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {loading ? "Setting up..." : "Get Started"}
             </button>
@@ -96,8 +99,8 @@ export default function RegisterPage() {
           <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
             <p className="text-xs text-amber-800 dark:text-amber-300 text-center leading-relaxed">
               <span className="font-semibold">Single-device app:</span> Your data is stored only in
-              this browser with session encryption. Clearing browser data removes all tasks — export
-              a backup from Settings to keep your data safe.
+              this browser (encrypted). Clearing browser data removes all tasks — export a backup from
+              Settings to keep your data safe.
             </p>
           </div>
         </div>

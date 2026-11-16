@@ -22,8 +22,8 @@ const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
 const TG = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
 // Optional Upstash Redis — gracefully degrades to in-process Map when absent
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL ?? "";
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? "";
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL ?? "";
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN ?? "";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -47,15 +47,24 @@ interface TgMessage {
 
 const _mem = new Map<string, Task[]>();
 
+// Upstash REST: POST a Redis command as a JSON array to the base URL.
+async function redis(command: string[]): Promise<string | null> {
+  const res = await fetch(REDIS_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify(command),
+  });
+  const json = await res.json();
+  return typeof json.result === "string" ? json.result : null;
+}
+
 async function loadTasks(chatId: number): Promise<Task[]> {
   const key = `tasks:${chatId}`;
   if (REDIS_URL && REDIS_TOKEN) {
     try {
-      const res = await fetch(`${REDIS_URL}/get/${key}`, {
-        headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
-      });
-      const json = await res.json();
-      return json.result ? JSON.parse(json.result) : [];
+      const stored = await redis(["GET", key]);
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed : [];
     } catch {
       return _mem.get(key) ?? [];
     }
@@ -68,14 +77,7 @@ async function saveTasks(chatId: number, tasks: Task[]): Promise<void> {
   _mem.set(key, tasks);
   if (REDIS_URL && REDIS_TOKEN) {
     try {
-      await fetch(`${REDIS_URL}/set/${key}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${REDIS_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ value: JSON.stringify(tasks) }),
-      });
+      await redis(["SET", key, JSON.stringify(tasks)]);
     } catch {
       // silently ignore — data lives in _mem for this instance lifetime
     }
@@ -154,6 +156,10 @@ async function tgPost(method: string, body: object) {
   });
 }
 
+function esc(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 async function reply(chatId: number, text: string) {
   await tgPost("sendMessage", { chat_id: chatId, text, parse_mode: "HTML" });
 }
@@ -186,7 +192,7 @@ async function handleListTasks(chatId: number) {
   tasks.forEach((t, i) => {
     const e = EMOJI[t.priority] ?? "🟡";
     const due = t.due ? ` · 📅 ${t.due}` : "";
-    msg += `${i + 1}. ${e} ${t.title}${due}\n`;
+    msg += `${i + 1}. ${e} ${esc(t.title)}${due}\n`;
   });
   msg += "\n<i>Use /done N to complete a task</i>";
   await reply(chatId, msg);
@@ -203,7 +209,7 @@ async function handleDone(chatId: number, n: number) {
   const target = pending[idx];
   const updated = allTasks.map((t) => (t.id === target.id ? { ...t, done: true } : t));
   await saveTasks(chatId, updated);
-  await reply(chatId, `✅ <b>Done:</b> ${target.title} 🎉`);
+  await reply(chatId, `✅ <b>Done:</b> ${esc(target.title)} 🎉`);
 }
 
 async function handleClear(chatId: number) {
@@ -228,7 +234,7 @@ async function handleTextTask(chatId: number, text: string) {
   await saveTasks(chatId, [...tasks, task]);
 
   const e = EMOJI[task.priority] ?? "🟡";
-  let confirm = `✅ <b>Task added!</b>\n\n📝 <b>${task.title}</b>\n${e} ${task.priority} · 📁 ${task.category}`;
+  let confirm = `✅ <b>Task added!</b>\n\n📝 <b>${esc(task.title)}</b>\n${e} ${task.priority} · 📁 ${task.category}`;
   if (task.due) confirm += `\n📅 Due: ${task.due}`;
   await reply(chatId, confirm);
 }

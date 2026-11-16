@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useTaskStore } from "@/store/useTaskStore";
 import {
   CheckCircle, LayoutDashboard, BarChart2,
-  Flame, Settings, Timer,
+  Flame, Settings, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isOverdue, isDueToday } from "@/lib/utils";
@@ -14,6 +14,7 @@ const navItems = [
   { href: "/dashboard",  label: "Dashboard",  icon: LayoutDashboard },
   { href: "/analytics",  label: "Analytics",  icon: BarChart2 },
   { href: "/habits",     label: "Habits",      icon: Flame },
+  { href: "/capture",    label: "Capture",     icon: Zap },
   { href: "/settings",   label: "Settings",    icon: Settings },
 ];
 
@@ -82,17 +83,6 @@ export function Sidebar() {
               </Link>
             );
           })}
-
-          {/* Pomodoro quick-link */}
-          <div className="pt-2 mt-2 border-t border-base">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all group"
-            >
-              <Timer className="w-4 h-4 flex-shrink-0 group-hover:scale-110 transition-transform" />
-              <span>Pomodoro Timer</span>
-            </Link>
-          </div>
         </nav>
 
         {/* Keyboard shortcut hint */}
@@ -105,7 +95,7 @@ export function Sidebar() {
                 <kbd className="bg-card border border-base px-1.5 py-0.5 rounded text-xs font-mono text-base-fg">N</kbd>
               </div>
               <div className="flex items-center justify-between">
-                <p className="text-xs text-secondary-fg">Search</p>
+                <p className="text-xs text-secondary-fg">Quick add</p>
                 <kbd className="bg-card border border-base px-1.5 py-0.5 rounded text-xs font-mono text-base-fg">/</kbd>
               </div>
             </div>
@@ -126,7 +116,7 @@ export function Sidebar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex-1 flex flex-col items-center gap-1 py-3 text-xs font-medium transition-colors relative",
+                  "flex-1 flex flex-col items-center gap-1 py-3 text-[11px] font-medium transition-colors relative",
                   isActive ? "text-primary" : "text-muted-fg"
                 )}
               >

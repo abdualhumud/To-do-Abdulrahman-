@@ -186,6 +186,16 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                 {showSubtasks ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </button>
             )}
+
+            {/* Add subtask (hover on desktop, always visible on touch) */}
+            {!addingSubtask && (
+              <button
+                onClick={() => setAddingSubtask(true)}
+                className="inline-flex items-center gap-1 text-xs text-muted-fg hover:text-primary transition-opacity opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+              >
+                <Plus className="w-3 h-3" /> Subtask
+              </button>
+            )}
           </div>
 
           {/* Subtask progress bar */}
@@ -232,7 +242,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
           )}
 
           {/* Add subtask */}
-          <div className="mt-1.5">
+          <div>
             {addingSubtask ? (
               <div className="flex items-center gap-2 mt-2 animate-slide-up">
                 <input
@@ -250,14 +260,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                 <button onClick={handleAddSubtask} className="text-xs font-medium text-primary hover:underline">Add</button>
                 <button onClick={() => setAddingSubtask(false)} className="text-xs text-muted-fg hover:underline">Cancel</button>
               </div>
-            ) : (
-              <button
-                onClick={() => setAddingSubtask(true)}
-                className="text-xs text-muted-fg hover:text-primary flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity mt-1"
-              >
-                <Plus className="w-3 h-3" /> Add subtask
-              </button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

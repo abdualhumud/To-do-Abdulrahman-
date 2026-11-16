@@ -28,13 +28,18 @@ export function TaskList({ onEditTask }: TaskListProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // Overdue tasks are shown in their own group, so drag order follows what is on screen.
+  const overdueTasks = tasks.filter((t) => t.status !== "completed" && isOverdue(t.due_date));
+  const otherTasks = tasks.filter((t) => !(t.status !== "completed" && isOverdue(t.due_date)));
+  const displayOrder = [...overdueTasks, ...otherTasks];
+
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = tasks.findIndex((t) => t.id === active.id);
-    const newIndex = tasks.findIndex((t) => t.id === over.id);
+    const oldIndex = displayOrder.findIndex((t) => t.id === active.id);
+    const newIndex = displayOrder.findIndex((t) => t.id === over.id);
     if (oldIndex === -1 || newIndex === -1) return;
-    reorderTasks(arrayMove(tasks, oldIndex, newIndex));
+    reorderTasks(arrayMove(displayOrder, oldIndex, newIndex));
   }
 
   if (tasks.length === 0) {
@@ -71,15 +76,7 @@ export function TaskList({ onEditTask }: TaskListProps) {
     );
   }
 
-  // Separate overdue tasks into their own group for visibility
-  const overdueTasks = tasks.filter(
-    (t) => t.status !== "completed" && isOverdue(t.due_date)
-  );
-  const otherTasks = tasks.filter(
-    (t) => !(t.status !== "completed" && isOverdue(t.due_date))
-  );
-
-  const hasOverdueGroup = overdueTasks.length > 0 && !filters.status && filters.status !== "completed";
+  const hasOverdueGroup = overdueTasks.length > 0;
 
   return (
     <DndContext
@@ -88,7 +85,7 @@ export function TaskList({ onEditTask }: TaskListProps) {
       onDragEnd={handleDragEnd}
       modifiers={[restrictToVerticalAxis]}
     >
-      <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext items={displayOrder.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         <div className="space-y-4">
           {/* Overdue group */}
           {hasOverdueGroup && (

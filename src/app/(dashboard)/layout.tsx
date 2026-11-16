@@ -1,38 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
-import { localUser, type LocalUser } from "@/lib/local-store";
+import { AppBootstrap } from "@/components/providers/AppBootstrap";
+import { useLocalUser } from "@/lib/use-local-store";
+import { stashCaptureRequest } from "@/lib/capture";
+
+function Spinner() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-base">
+      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const initialUser = localUser.get();
-  const [user] = useState<LocalUser | null>(initialUser);
+  const { ready, user } = useLocalUser();
 
   useEffect(() => {
-    if (!user) {
+    if (ready && !user) {
+      stashCaptureRequest();
       router.replace("/login");
     }
-  }, [user, router]);
+  }, [ready, user, router]);
 
-  if (!user) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-base">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (!ready || !user) return <Spinner />;
 
   return (
     <div className="flex h-screen bg-base overflow-hidden">
+      <AppBootstrap />
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Header user={user} />
-        <main className="flex-1 overflow-y-auto p-6">
-          {children}
-        </main>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

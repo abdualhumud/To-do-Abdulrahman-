@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { Task, SubTask, Tag } from "@/types";
-import { localTasks, localTags, localUser } from "@/lib/local-store";
+import { localTasks, localTags, localUser, hydrateLocalStore } from "@/lib/local-store";
 
 interface TaskFilters {
   status: string;
@@ -23,6 +23,7 @@ interface TaskStore {
   fetchTasks: () => Promise<void>;
   fetchTags: () => Promise<void>;
   createTask: (task: Partial<Task>, tagIds?: string[]) => Promise<Task | null>;
+  createTasks: (items: Partial<Task>[]) => Promise<Task[]>;
   updateTask: (id: string, updates: Partial<Task>, tagIds?: string[]) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   toggleTask: (id: string) => Promise<void>;
@@ -57,46 +58,59 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   fetchTasks: async () => {
     set({ isLoading: true, error: null });
-    // Use async read so encrypted localStorage data is decrypted on page load
-    const tasks: Task[] = await localTasks.getAsync();
+    await hydrateLocalStore();
+    // Read the cache in the same tick as set(): a read taken before an await could be
+    // stale by the time it lands and would overwrite a task created in between.
+    const tasks: Task[] = localTasks.get();
     set({ tasks, isLoading: false });
   },
 
   fetchTags: async () => {
-    // Use async read so encrypted localStorage data is decrypted on page load
-    const tags: Tag[] = await localTags.getAsync();
+    await hydrateLocalStore();
+    const tags: Tag[] = localTags.get();
     set({ tags });
   },
 
   createTask: async (task, tagIds = []) => {
-    const user = localUser.get();
-    if (!user) return null;
-
     const allTags: Tag[] = localTags.get();
     const tags = allTags.filter((t) => tagIds.includes(t.id));
+    const [created] = await get().createTasks([{ ...task, tags }]);
+    return created ?? null;
+  },
 
-    const newTask: Task = {
-      id: uuid(),
-      user_id: user.id,
-      title: task.title || "",
-      description: task.description ?? null,
-      status: task.status || "pending",
-      priority: task.priority || "medium",
-      category: task.category || "personal",
-      due_date: task.due_date ?? null,
-      reminder_at: task.reminder_at ?? null,
-      order_index: get().tasks.length,
-      completed_at: null,
-      created_at: now(),
-      updated_at: now(),
-      tags,
-      subtasks: [],
-    };
+  // Builds on the persisted list (not the possibly-not-yet-loaded UI state) so a
+  // capture that fires right after page load can never overwrite existing tasks.
+  createTasks: async (items) => {
+    await hydrateLocalStore();
+    const user = localUser.get();
+    if (!user) return [];
 
-    const tasks = [...get().tasks, newTask];
+    const base: Task[] = localTasks.get();
+    const created: Task[] = items
+      .filter((item) => item.title?.trim())
+      .map((item, i) => ({
+        id: uuid(),
+        user_id: user.id,
+        title: item.title!.trim().slice(0, 1000),
+        description: item.description ?? null,
+        status: item.status || "pending",
+        priority: item.priority || "medium",
+        category: item.category || "personal",
+        due_date: item.due_date ?? null,
+        reminder_at: item.reminder_at ?? null,
+        order_index: base.length + i,
+        completed_at: null,
+        created_at: now(),
+        updated_at: now(),
+        tags: item.tags ?? [],
+        subtasks: [],
+      }));
+    if (created.length === 0) return [];
+
+    const tasks = [...base, ...created];
     localTasks.set(tasks);
     set({ tasks });
-    return newTask;
+    return created;
   },
 
   updateTask: async (id, updates, tagIds) => {
@@ -131,10 +145,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set({ tasks });
   },
 
-  reorderTasks: async (tasks) => {
-    const reordered = tasks.map((t, i) => ({ ...t, order_index: i }));
-    localTasks.set(reordered);
-    set({ tasks: reordered });
+  // `reordered` may be a filtered subset: place it back into the slots the subset
+  // occupied so tasks hidden by the current filter are never dropped.
+  reorderTasks: async (reordered) => {
+    const all = get().tasks;
+    const ids = new Set(reordered.map((t) => t.id));
+    const slots = all.flatMap((t, i) => (ids.has(t.id) ? [i] : []));
+    const next = [...all];
+    slots.forEach((slot, k) => {
+      next[slot] = reordered[k];
+    });
+    const tasks = next.map((t, i) => ({ ...t, order_index: i }));
+    localTasks.set(tasks);
+    set({ tasks });
   },
 
   createTag: async (tag) => {

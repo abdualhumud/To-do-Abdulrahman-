@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { localUser } from "@/lib/local-store";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { Settings, Sun, Moon, Monitor, User, Send, ExternalLink } from "lucide-react";
+import { TelegramCard } from "@/components/settings/TelegramCard";
+import { BackupCard } from "@/components/settings/BackupCard";
+import { Settings, Sun, Moon, Monitor, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
-
-const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -29,8 +29,7 @@ export default function SettingsPage() {
   ] as const;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 pb-20 md:pb-6">
-      {/* Header */}
+    <div className="max-w-2xl mx-auto space-y-6 pb-24 md:pb-8">
       <div className="flex items-center gap-3">
         <div className="w-9 h-9 bg-secondary rounded-xl flex items-center justify-center">
           <Settings className="w-5 h-5 text-secondary-fg" />
@@ -96,23 +95,11 @@ export default function SettingsPage() {
                 onClick={() => setTheme(opt.value)}
                 className={cn(
                   "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all",
-                  theme === opt.value
-                    ? "border-primary bg-accent"
-                    : "border-base hover:border-primary/50"
+                  theme === opt.value ? "border-primary bg-accent" : "border-base hover:border-primary"
                 )}
               >
-                <Icon
-                  className={cn(
-                    "w-5 h-5",
-                    theme === opt.value ? "text-primary" : "text-secondary-fg"
-                  )}
-                />
-                <span
-                  className={cn(
-                    "text-sm font-medium",
-                    theme === opt.value ? "text-primary" : "text-secondary-fg"
-                  )}
-                >
+                <Icon className={cn("w-5 h-5", theme === opt.value ? "text-primary" : "text-secondary-fg")} />
+                <span className={cn("text-sm font-medium", theme === opt.value ? "text-primary" : "text-secondary-fg")}>
                   {opt.label}
                 </span>
               </button>
@@ -121,62 +108,18 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Telegram Integration */}
-      <div className="card p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <Send className="w-4 h-4 text-secondary-fg" />
-          <h2 className="font-semibold text-base-fg">Telegram Bot</h2>
-        </div>
-
-        {BOT_USERNAME ? (
-          <>
-            <p className="text-sm text-secondary-fg">
-              Use the TaskFlow bot on Telegram to add tasks, set reminders, and check
-              your task list — all without opening the web app.
-            </p>
-
-            <a
-              href={`https://t.me/${BOT_USERNAME}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 btn-primary"
-            >
-              <ExternalLink className="w-4 h-4" />
-              Open @{BOT_USERNAME} on Telegram
-            </a>
-
-            <div className="bg-secondary/50 rounded-xl p-3 space-y-1 text-xs text-secondary-fg">
-              <p className="font-medium text-base-fg text-sm mb-2">Available commands:</p>
-              <p><code className="bg-base rounded px-1 py-0.5">/tasks</code> — list your pending tasks</p>
-              <p><code className="bg-base rounded px-1 py-0.5">/done 2</code> — mark task #2 complete</p>
-              <p className="pt-1">Or just <strong>send any text</strong> to create a task instantly.</p>
-              <p className="pt-1 text-muted-fg">
-                Smart format: <code className="bg-base rounded px-1 py-0.5">
-                  Buy groceries tomorrow at 6pm #personal !high
-                </code>
-              </p>
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-secondary-fg">
-            Telegram bot not configured yet. Add{" "}
-            <code className="bg-secondary rounded px-1 py-0.5 text-xs">
-              NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
-            </code>{" "}
-            to GitHub Secrets and redeploy to enable this feature.
-          </p>
-        )}
-      </div>
+      <TelegramCard />
+      <BackupCard />
 
       {/* About */}
       <div className="card p-5">
         <h2 className="font-semibold text-base-fg mb-1">About TaskFlow</h2>
-        <p className="text-sm text-secondary-fg">Version 1.0.0 · Local-first mode</p>
+        <p className="text-sm text-secondary-fg">Version 1.1.0 · Local-first mode</p>
         <div className="mt-3 text-xs text-muted-fg space-y-1">
-          <p>💾 All data saved locally in your browser</p>
+          <p>💾 All data saved locally in your browser (encrypted)</p>
+          <p>⚡ Add tasks from Shortcuts, Notes, Telegram or any link</p>
           <p>📊 Real-time analytics and habit tracking</p>
           <p>⏱️ Integrated Pomodoro timer</p>
-          <p>🌙 Dark / Light / System theme</p>
         </div>
       </div>
     </div>

@@ -1,5 +1,26 @@
 @import "tailwindcss";
 
+/* The app toggles a .dark class on <html>; make dark: variants follow it (v4 defaults to the OS setting). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Theme tokens as real Tailwind colors, so hover:/focus:/dark: variants and /opacity
+   modifiers work (plain classes in @layer utilities get no variants in Tailwind v4). */
+@theme inline {
+  --color-primary: rgb(var(--primary));
+  --color-primary-fg: rgb(var(--primary-fg));
+  --color-secondary: rgb(var(--secondary));
+  --color-secondary-fg: rgb(var(--secondary-fg));
+  --color-muted: rgb(var(--muted));
+  --color-muted-fg: rgb(var(--muted-fg));
+  --color-accent: rgb(var(--accent));
+  --color-accent-fg: rgb(var(--accent-fg));
+  --color-card: rgb(var(--card));
+  --color-danger: rgb(var(--danger));
+  --color-warning: rgb(var(--warning));
+  --color-success: rgb(var(--success));
+  --color-base-fg: rgb(var(--fg));
+}
+
 @layer base {
   :root {
     --bg: 248 250 252;
@@ -64,32 +85,11 @@
   ::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted-fg)); }
 }
 
-@layer utilities {
-  /* ── Backgrounds ─────────────────────────────────────── */
-  .bg-base      { background-color: rgb(var(--bg)); }
-  .bg-card      { background-color: rgb(var(--card)); }
-  .bg-primary   { background-color: rgb(var(--primary)); }
-  .bg-secondary { background-color: rgb(var(--secondary)); }
-  .bg-muted     { background-color: rgb(var(--muted)); }
-  .bg-accent    { background-color: rgb(var(--accent)); }
-  .bg-danger    { background-color: rgb(var(--danger)); }
-  .bg-success   { background-color: rgb(var(--success)); }
-  .bg-warning   { background-color: rgb(var(--warning)); }
-
-  /* ── Text ────────────────────────────────────────────── */
-  .text-base-fg      { color: rgb(var(--fg)); }
-  .text-primary      { color: rgb(var(--primary)); }
-  .text-primary-fg   { color: rgb(var(--primary-fg)); }
-  .text-secondary-fg { color: rgb(var(--secondary-fg)); }
-  .text-muted-fg     { color: rgb(var(--muted-fg)); }
-  .text-accent-fg    { color: rgb(var(--accent-fg)); }
-  .text-danger       { color: rgb(var(--danger)); }
-  .text-warning      { color: rgb(var(--warning)); }
-  .text-success      { color: rgb(var(--success)); }
-
-  /* ── Border ──────────────────────────────────────────── */
-  .border-base    { border-color: rgb(var(--border)); }
-  .border-primary { border-color: rgb(var(--primary)); }
+/* components layer: Tailwind utilities (pl-9, h-9, px-3…) must be able to override these */
+@layer components {
+  /* ── Page background & default border (colors live in @theme above) ── */
+  .bg-base     { background-color: rgb(var(--bg)); }
+  .border-base { border-color: rgb(var(--border)); }
 
   /* ── Card ────────────────────────────────────────────── */
   .card {

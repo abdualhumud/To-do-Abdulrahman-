@@ -51,8 +51,6 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
           NEXT_PUBLIC_APP_URL: https://${{ github.repository_owner }}.github.io/To-do-Abdulrahman-
-          # Optional: set this secret in GitHub if you wire up the Telegram bot later.
-          NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${{ secrets.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME }}
         run: npm run build
 
       - name: Upload Pages artifact

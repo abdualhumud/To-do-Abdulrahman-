@@ -3,39 +3,32 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { localUser } from "@/lib/local-store";
+import { hydrateLocalStore, localUser } from "@/lib/local-store";
+import { useLocalUser } from "@/lib/use-local-store";
 import { CheckCircle, User, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { ready, user } = useLocalUser();
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already logged in
+  // Already signed in → go straight to the app
   useEffect(() => {
-    if (localUser.get()) router.replace("/dashboard");
-  }, [router]);
+    if (ready && user) router.replace("/dashboard");
+  }, [ready, user, router]);
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
+    await hydrateLocalStore();
 
-    const existing = localUser.get();
-    if (existing) {
-      router.push("/dashboard");
-      return;
+    if (!localUser.get()) {
+      localUser.set({ id: crypto.randomUUID(), name: name.trim(), email: "" });
+      toast.success(`Welcome back, ${name.trim()}!`);
     }
-
-    // First-time: create a local user and go to dashboard
-    localUser.set({
-      id: crypto.randomUUID(),
-      name: name.trim(),
-      email: "",
-    });
-
-    toast.success(`Welcome back, ${name.trim()}!`);
     router.push("/dashboard");
   }
 
@@ -71,7 +64,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <button type="submit" disabled={loading || !name.trim()} className="btn-primary w-full justify-center py-3 mt-2">
+            <button type="submit" disabled={loading || !ready || !name.trim()} className="btn-primary w-full justify-center py-3 mt-2">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
               {loading ? "Loading..." : "Get Started"}
             </button>

@@ -1,13 +1,17 @@
 /**
  * local-store.ts
- * Thin localStorage wrappers that replace Supabase for the "no-database" mode.
- * All data is stored in the user's browser only.
+ * localStorage persistence for the no-database mode. All data stays in this browser.
  *
- * Security measures applied:
- * 1. All values validated with Zod schemas before use (prevents injected/corrupted data)
- * 2. Writes are AES-GCM encrypted using a per-session key in sessionStorage
- *    (protects data at rest when the browser is closed; key is cleared on tab close)
- * 3. Reads fall back to plain JSON for legacy unencrypted data, then re-encrypt on save
+ * Design notes (learned the hard way — see CLAUDE.md):
+ * - Values are AES-GCM encrypted with a NON-EXTRACTABLE key persisted in IndexedDB.
+ *   The key must outlive the tab, otherwise data is unreadable after a restart.
+ *   This is obfuscation against casual inspection of localStorage, not a defence
+ *   against XSS or someone using the unlocked browser.
+ * - Everything is decrypted ONCE into an in-memory cache by hydrateLocalStore().
+ *   After that all reads are synchronous and writes are write-through + serialized.
+ * - Data is validated with Zod at trust boundaries (reading disk, importing backups),
+ *   never silently on write — dropping a task because of a schema mismatch is data loss.
+ * - Other tabs are kept coherent through the `storage` event.
  */
 
 import { z } from "zod";
@@ -18,7 +22,16 @@ export interface LocalUser {
   email: string;
 }
 
-// ─── Zod Schemas ──────────────────────────────────────────────────────────────
+export interface LocalTelegram {
+  token: string;
+  botUsername: string;
+  chatId: number | null;
+  pairCode: string | null;
+  pairExpires: number | null;
+  offset: number;
+}
+
+// ─── Schemas ──────────────────────────────────────────────────────────────────
 
 const LocalUserSchema = z.object({
   id: z.string().uuid(),
@@ -26,22 +39,22 @@ const LocalUserSchema = z.object({
   email: z.string().max(320),
 });
 
-const TaskSchema = z
+export const TaskSchema = z
   .object({
     id: z.string(),
     title: z.string().min(1).max(1000),
-    description: z.string().max(5000).optional(),
+    description: z.string().max(5000).nullable().optional(),
     status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
     priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
     category: z.string().max(100).optional(),
     due_date: z.string().nullable().optional(),
     completed_at: z.string().nullable().optional(),
     created_at: z.string().optional(),
-    tags: z.array(z.string()).optional(),
+    tags: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()).optional(),
   })
   .passthrough();
 
-const TagSchema = z
+export const TagSchema = z
   .object({
     id: z.string(),
     name: z.string().min(1).max(100),
@@ -49,7 +62,7 @@ const TagSchema = z
   })
   .passthrough();
 
-const HabitSchema = z
+export const HabitSchema = z
   .object({
     id: z.string(),
     title: z.string().min(1).max(500),
@@ -58,7 +71,7 @@ const HabitSchema = z
   })
   .passthrough();
 
-const CompletionSchema = z
+export const CompletionSchema = z
   .object({
     id: z.string(),
     habit_id: z.string(),
@@ -66,267 +79,331 @@ const CompletionSchema = z
   })
   .passthrough();
 
-// ─── Storage keys ─────────────────────────────────────────────────────────────
+const TelegramSchema = z.object({
+  token: z.string().min(20).max(200),
+  botUsername: z.string().max(100),
+  chatId: z.number().nullable(),
+  pairCode: z.string().max(20).nullable(),
+  pairExpires: z.number().nullable(),
+  offset: z.number().int().min(0),
+});
+
+// ─── Keys ─────────────────────────────────────────────────────────────────────
+
 const K = {
   user: "tf_user",
   tasks: "tf_tasks",
   tags: "tf_tags",
   habits: "tf_habits",
   completions: "tf_habit_completions",
-  encKey: "tf_enc_key", // lives in sessionStorage (cleared on tab/browser close)
+  telegram: "tf_telegram",
+  legacySessionKey: "tf_enc_key", // v1 stored the AES key in sessionStorage (lost on tab close)
 } as const;
 
-const ENC_PREFIX = "enc:v1:";
+const DATA_KEYS: string[] = [K.user, K.tasks, K.tags, K.habits, K.completions, K.telegram];
+const ARRAY_SCHEMAS: Record<string, z.ZodType> = {
+  [K.tasks]: TaskSchema,
+  [K.tags]: TagSchema,
+  [K.habits]: HabitSchema,
+  [K.completions]: CompletionSchema,
+};
 
-// ─── AES-GCM Key Management ───────────────────────────────────────────────────
+const ENC_V1 = "enc:v1:";
+const ENC_V2 = "enc:v2:";
+
+// ─── Change notification (for useSyncExternalStore) ───────────────────────────
+
+let _version = 0;
+const _listeners = new Set<() => void>();
+const _externalListeners = new Set<() => void>();
+
+function notify(): void {
+  _version++;
+  _listeners.forEach((cb) => cb());
+}
+
+export function subscribeStore(cb: () => void): () => void {
+  _listeners.add(cb);
+  return () => _listeners.delete(cb);
+}
+
+/** Increments on every write and once when hydration completes (so > 0 means ready). */
+export function getStoreVersion(): number {
+  return _version;
+}
+
+/** Fires when ANOTHER tab changed stored data (after this tab refreshed its cache). */
+export function onExternalChange(cb: () => void): () => void {
+  _externalListeners.add(cb);
+  return () => _externalListeners.delete(cb);
+}
+
+// ─── Encryption key (persistent, non-extractable, in IndexedDB) ───────────────
 
 let _encKey: CryptoKey | null = null;
-let _keyInitPromise: Promise<void> | null = null;
+let _legacyKey: CryptoKey | null = null;
+let _keyPromise: Promise<void> | null = null;
+
+const KEY_DB = "tf_keystore";
+const KEY_STORE = "keys";
+const KEY_ID = "aes-gcm-main";
+
+function openKeyDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(KEY_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(KEY_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error("IndexedDB blocked"));
+  });
+}
+
+/** Atomically returns the stored key, or stores `candidate` if none exists (safe across tabs). */
+function getOrStoreKey(db: IDBDatabase, candidate: CryptoKey): Promise<CryptoKey> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(KEY_STORE, "readwrite");
+    const store = tx.objectStore(KEY_STORE);
+    let result = candidate;
+    const getReq = store.get(KEY_ID);
+    getReq.onsuccess = () => {
+      if (getReq.result) result = getReq.result as CryptoKey;
+      else store.put(candidate, KEY_ID);
+    };
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
 
 function initEncryptionKey(): Promise<void> {
-  if (_keyInitPromise) return _keyInitPromise;
-  _keyInitPromise = (async () => {
+  if (_keyPromise) return _keyPromise;
+  _keyPromise = (async () => {
     if (typeof window === "undefined") return;
     try {
-      const stored = sessionStorage.getItem(K.encKey);
-      if (stored) {
-        try {
-          const jwk = JSON.parse(stored);
-          _encKey = await crypto.subtle.importKey(
-            "jwk",
-            jwk,
-            { name: "AES-GCM" },
-            false,
-            ["encrypt", "decrypt"],
-          );
-          return;
-        } catch {
-          // Corrupted key — generate fresh one
-        }
+      const candidate = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
+        "encrypt",
+        "decrypt",
+      ]);
+      const db = await openKeyDb();
+      try {
+        _encKey = await getOrStoreKey(db, candidate);
+      } finally {
+        db.close();
       }
-      const key = await crypto.subtle.generateKey(
-        { name: "AES-GCM", length: 256 },
-        true,
-        ["encrypt", "decrypt"],
-      );
-      const exported = await crypto.subtle.exportKey("jwk", key);
-      sessionStorage.setItem(K.encKey, JSON.stringify(exported));
-      _encKey = key;
     } catch {
-      // crypto.subtle unavailable (HTTP / old browser) — fall back to plain JSON
+      _encKey = null; // IndexedDB / WebCrypto unavailable → data is stored as plain JSON
+    }
+    try {
+      const stored = sessionStorage.getItem(K.legacySessionKey);
+      if (stored) {
+        _legacyKey = await crypto.subtle.importKey("jwk", JSON.parse(stored), { name: "AES-GCM" }, false, [
+          "decrypt",
+        ]);
+      }
+    } catch {
+      _legacyKey = null;
     }
   })();
-  return _keyInitPromise;
+  return _keyPromise;
 }
 
-// Kick off key init as soon as the module is loaded client-side
-if (typeof window !== "undefined") {
-  initEncryptionKey();
+function toBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
 }
 
-// ─── Write-through in-memory cache ────────────────────────────────────────────
-// Populated synchronously on every write so that readSync() always returns the
-// latest value even when the localStorage copy is encrypted (async-only).
+function fromBase64(b64: string): Uint8Array {
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+}
+
+async function encryptString(plain: string): Promise<string> {
+  if (!_encKey) return plain;
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, _encKey, new TextEncoder().encode(plain)));
+  const out = new Uint8Array(12 + ct.length);
+  out.set(iv);
+  out.set(ct, 12);
+  return ENC_V2 + toBase64(out);
+}
+
+/** Returns the plaintext JSON string, or null when it cannot be decrypted. */
+async function decryptString(raw: string): Promise<string | null> {
+  const isV2 = raw.startsWith(ENC_V2);
+  const isV1 = raw.startsWith(ENC_V1);
+  if (!isV1 && !isV2) return raw; // plain JSON (legacy or no-encryption fallback)
+  const key = isV2 ? _encKey : _legacyKey;
+  if (!key) return null;
+  try {
+    const bytes = fromBase64(raw.slice(isV2 ? ENC_V2.length : ENC_V1.length));
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(0, 12) }, key, bytes.slice(12));
+    return new TextDecoder().decode(plain);
+  } catch {
+    return null;
+  }
+}
+
+// ─── Cache, hydration, serialized writes ──────────────────────────────────────
+
 const _memCache = new Map<string, unknown>();
+let _hydrated = false;
+let _hydratePromise: Promise<void> | null = null;
+let _writeChain: Promise<void> = Promise.resolve();
 
-async function encryptAndWrite(storageKey: string, value: unknown): Promise<void> {
-  if (typeof window === "undefined") return;
-  await initEncryptionKey();
-  const jsonStr = JSON.stringify(value);
-  if (_encKey) {
+function sanitize(key: string, parsed: unknown): unknown | undefined {
+  if (key === K.user) {
+    const r = LocalUserSchema.safeParse(parsed);
+    return r.success ? r.data : undefined;
+  }
+  if (key === K.telegram) {
+    const r = TelegramSchema.safeParse(parsed);
+    return r.success ? r.data : undefined;
+  }
+  const schema = ARRAY_SCHEMAS[key];
+  if (!schema || !Array.isArray(parsed)) return undefined;
+  const valid = parsed.filter((item) => schema.safeParse(item).success);
+  if (valid.length !== parsed.length) {
+    console.warn(`[local-store] ${parsed.length - valid.length} invalid item(s) skipped in ${key}`);
+  }
+  return valid;
+}
+
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+async function hydrateKey(key: string): Promise<void> {
+  if (_memCache.has(key)) return;
+  const raw = safeGetItem(key);
+  if (!raw) return;
+  const json = await decryptString(raw);
+  if (json === null) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return;
+  }
+  const clean = sanitize(key, parsed);
+  if (clean === undefined || _memCache.has(key)) return; // a newer in-memory write wins
+  _memCache.set(key, clean);
+  if (!raw.startsWith(ENC_V2) && _encKey) queueFlush(key); // upgrade plain / v1 data to v2
+}
+
+export function hydrateLocalStore(): Promise<void> {
+  if (_hydratePromise) return _hydratePromise;
+  _hydratePromise = (async () => {
+    if (typeof window === "undefined") return;
     try {
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const encoded = new TextEncoder().encode(jsonStr);
-      const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, _encKey, encoded);
-      const combined = new Uint8Array(12 + ciphertext.byteLength);
-      combined.set(iv);
-      combined.set(new Uint8Array(ciphertext), 12);
-      localStorage.setItem(storageKey, ENC_PREFIX + btoa(String.fromCharCode(...combined)));
-      return;
-    } catch {
-      // Fall through to plain write
-    }
-  }
-  localStorage.setItem(storageKey, jsonStr);
-}
-
-async function decryptOrRead(raw: string): Promise<string> {
-  if (!raw.startsWith(ENC_PREFIX)) return raw; // Legacy plain JSON
-  await initEncryptionKey();
-  if (!_encKey) return "null";
-  try {
-    const combined = Uint8Array.from(atob(raw.slice(ENC_PREFIX.length)), (c) => c.charCodeAt(0));
-    const iv = combined.slice(0, 12);
-    const ciphertext = combined.slice(12);
-    const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, _encKey, ciphertext);
-    return new TextDecoder().decode(decrypted);
-  } catch {
-    return "null";
-  }
-}
-
-// ─── Generic helpers ──────────────────────────────────────────────────────────
-
-/** Synchronous read — checks in-memory cache first, then localStorage (plain JSON only). */
-function readSync<T>(storageKey: string, fallback: T): T {
-  // In-memory cache is always authoritative (populated by writeAsync on every write)
-  if (_memCache.has(storageKey)) {
-    return _memCache.get(storageKey) as T;
-  }
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return fallback;
-    if (raw.startsWith(ENC_PREFIX)) {
-      // Encrypted data not yet in cache (page just loaded). The caller must use
-      // getAsync() / an async fetch function to decrypt and populate the cache.
-      return fallback;
-    }
-    // Legacy plain JSON — parse and warm the cache
-    const value = JSON.parse(raw) as T;
-    _memCache.set(storageKey, value);
-    return value;
-  } catch {
-    return fallback;
-  }
-}
-
-/** Async read — decrypts if necessary and validates. */
-async function readAsync<T>(storageKey: string, fallback: T): Promise<T> {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (!raw) return fallback;
-    const jsonStr = await decryptOrRead(raw);
-    return JSON.parse(jsonStr) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-/** Fire-and-forget encrypted write. Immediately updates in-memory cache so
- *  readSync() callers see the new value without waiting for async encryption. */
-function writeAsync(storageKey: string, value: unknown): void {
-  // Sync cache update — makes readSync() work immediately after any write
-  _memCache.set(storageKey, value);
-  encryptAndWrite(storageKey, value).catch(() => {
-    // Last-resort sync write if async encryption fails
-    if (typeof window !== "undefined") {
+      await initEncryptionKey();
+      await Promise.all(DATA_KEYS.map(hydrateKey));
       try {
-        localStorage.setItem(storageKey, JSON.stringify(value));
+        sessionStorage.removeItem(K.legacySessionKey);
+      } catch {
+        /* ignore */
+      }
+    } finally {
+      _hydrated = true;
+      notify();
+    }
+  })();
+  return _hydratePromise;
+}
+
+export function isHydrated(): boolean {
+  return _hydrated;
+}
+
+function queueFlush(key: string): void {
+  _writeChain = _writeChain
+    .then(async () => {
+      if (typeof window === "undefined" || !_memCache.has(key)) return;
+      await initEncryptionKey();
+      const value = _memCache.get(key); // always persist the latest value
+      localStorage.setItem(key, await encryptString(JSON.stringify(value)));
+    })
+    .catch(() => {
+      try {
+        if (_memCache.has(key)) localStorage.setItem(key, JSON.stringify(_memCache.get(key)));
       } catch {
         /* storage full or blocked */
       }
-    }
+    });
+}
+
+function writeValue(key: string, value: unknown): void {
+  _memCache.set(key, value);
+  queueFlush(key);
+  notify();
+}
+
+function removeValue(key: string): void {
+  _memCache.delete(key);
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+  notify();
+}
+
+function readValue<T>(key: string, fallback: T): T {
+  return _memCache.has(key) ? (_memCache.get(key) as T) : fallback;
+}
+
+if (typeof window !== "undefined") {
+  void hydrateLocalStore();
+  window.addEventListener("storage", (e) => {
+    if (e.storageArea !== localStorage) return;
+    if (e.key !== null && !DATA_KEYS.includes(e.key)) return;
+    const keys = e.key === null ? DATA_KEYS : [e.key];
+    keys.forEach((k) => _memCache.delete(k));
+    Promise.all(keys.map(hydrateKey)).then(() => {
+      notify();
+      _externalListeners.forEach((cb) => cb());
+    });
   });
 }
 
 // ─── Domain helpers ───────────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyArray = any[];
+
 export const localUser = {
-  /** Sync read + Zod validation. Returns null if missing or schema invalid. */
-  get: (): LocalUser | null => {
-    const raw = readSync<unknown>(K.user, null);
-    if (!raw) return null;
-    const result = LocalUserSchema.safeParse(raw);
-    return result.success ? result.data : null;
-  },
-  /** Async read (for use in async contexts, e.g. settings page save). */
-  getAsync: async (): Promise<LocalUser | null> => {
-    const raw = await readAsync<unknown>(K.user, null);
-    if (!raw) return null;
-    const result = LocalUserSchema.safeParse(raw);
-    return result.success ? result.data : null;
-  },
-  set: (u: LocalUser) => {
-    const validated = LocalUserSchema.parse(u);
-    writeAsync(K.user, validated);
-  },
-  clear: () => typeof window !== "undefined" && localStorage.removeItem(K.user),
+  get: (): LocalUser | null => readValue<LocalUser | null>(K.user, null),
+  set: (u: LocalUser) => writeValue(K.user, LocalUserSchema.parse(u)),
+  clear: () => removeValue(K.user),
 };
 
-function validateArray<T>(raw: unknown[], schema: z.ZodType<T>): unknown[] {
-  return raw
-    .map((item) => schema.safeParse(item))
-    .filter((r): r is z.ZodSafeParseSuccess<T> => r.success)
-    .map((r) => r.data);
+export const localTelegram = {
+  get: (): LocalTelegram | null => readValue<LocalTelegram | null>(K.telegram, null),
+  set: (t: LocalTelegram) => writeValue(K.telegram, TelegramSchema.parse(t)),
+  clear: () => removeValue(K.telegram),
+};
+
+function arrayStore(key: string) {
+  return {
+    get: (): AnyArray => {
+      const v = readValue<unknown>(key, []);
+      return Array.isArray(v) ? v : [];
+    },
+    getAsync: async (): Promise<AnyArray> => {
+      await hydrateLocalStore();
+      const v = readValue<unknown>(key, []);
+      return Array.isArray(v) ? v : [];
+    },
+    set: (v: AnyArray) => writeValue(key, v),
+  };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyArray = any[];
-
-export const localTasks = {
-  get: (): AnyArray => {
-    const raw = readSync<unknown[]>(K.tasks, []);
-    if (!Array.isArray(raw)) return [];
-    return validateArray(raw, TaskSchema);
-  },
-  getAsync: async (): Promise<AnyArray> => {
-    const raw = await readAsync<unknown[]>(K.tasks, []);
-    if (!Array.isArray(raw)) return [];
-    const validated = validateArray(raw, TaskSchema);
-    _memCache.set(K.tasks, validated);
-    return validated;
-  },
-  set: (v: AnyArray) => {
-    const validated = validateArray(v, TaskSchema);
-    writeAsync(K.tasks, validated);
-  },
-};
-
-export const localTags = {
-  get: (): AnyArray => {
-    const raw = readSync<unknown[]>(K.tags, []);
-    if (!Array.isArray(raw)) return [];
-    return validateArray(raw, TagSchema);
-  },
-  getAsync: async (): Promise<AnyArray> => {
-    const raw = await readAsync<unknown[]>(K.tags, []);
-    if (!Array.isArray(raw)) return [];
-    const validated = validateArray(raw, TagSchema);
-    _memCache.set(K.tags, validated);
-    return validated;
-  },
-  set: (v: AnyArray) => {
-    const validated = validateArray(v, TagSchema);
-    writeAsync(K.tags, validated);
-  },
-};
-
-export const localHabits = {
-  get: (): AnyArray => {
-    const raw = readSync<unknown[]>(K.habits, []);
-    if (!Array.isArray(raw)) return [];
-    return validateArray(raw, HabitSchema);
-  },
-  getAsync: async (): Promise<AnyArray> => {
-    const raw = await readAsync<unknown[]>(K.habits, []);
-    if (!Array.isArray(raw)) return [];
-    const validated = validateArray(raw, HabitSchema);
-    _memCache.set(K.habits, validated);
-    return validated;
-  },
-  set: (v: AnyArray) => {
-    const validated = validateArray(v, HabitSchema);
-    writeAsync(K.habits, validated);
-  },
-};
-
-export const localCompletions = {
-  get: (): AnyArray => {
-    const raw = readSync<unknown[]>(K.completions, []);
-    if (!Array.isArray(raw)) return [];
-    return validateArray(raw, CompletionSchema);
-  },
-  getAsync: async (): Promise<AnyArray> => {
-    const raw = await readAsync<unknown[]>(K.completions, []);
-    if (!Array.isArray(raw)) return [];
-    const validated = validateArray(raw, CompletionSchema);
-    _memCache.set(K.completions, validated);
-    return validated;
-  },
-  set: (v: AnyArray) => {
-    const validated = validateArray(v, CompletionSchema);
-    writeAsync(K.completions, validated);
-  },
-};
+export const localTasks = arrayStore(K.tasks);
+export const localTags = arrayStore(K.tags);
+export const localHabits = arrayStore(K.habits);
+export const localCompletions = arrayStore(K.completions);
