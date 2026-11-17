@@ -16,7 +16,7 @@ const CSP_META = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https://avatars.githubusercontent.com https://lh3.googleusercontent.com",
   "font-src 'self'",
-  "connect-src 'self' https://*.supabase.co https://api.telegram.org",
+  "connect-src 'self' https://*.supabase.co https://api.telegram.org https://*.vercel.app",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

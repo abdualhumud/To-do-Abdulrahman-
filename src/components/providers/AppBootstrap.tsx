@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { onExternalChange } from "@/lib/local-store";
 import { useTelegramConfig } from "@/lib/use-local-store";
 import { processCaptureRequest } from "@/lib/capture";
-import { pollTelegram } from "@/lib/telegram";
+import { isLinked, pollTelegram } from "@/lib/telegram";
 import { useTaskStore } from "@/store/useTaskStore";
 import { useHabitStore } from "@/store/useHabitStore";
 
@@ -41,7 +41,7 @@ export function AppBootstrap() {
 function TelegramSync() {
   const config = useTelegramConfig();
   const connected = config !== null;
-  const interval = config?.chatId ? SYNC_POLL_MS : PAIRING_POLL_MS;
+  const interval = config && isLinked(config) ? SYNC_POLL_MS : PAIRING_POLL_MS;
 
   useEffect(() => {
     if (!connected) return;

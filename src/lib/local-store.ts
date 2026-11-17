@@ -23,7 +23,11 @@ export interface LocalUser {
 }
 
 export interface LocalTelegram {
-  token: string;
+  /** "browser": this browser polls Telegram with the bot token. "server": an always-on Vercel server holds the bot. */
+  mode: "browser" | "server";
+  token: string; // browser mode
+  serverUrl: string; // server mode
+  inboxKey: string; // server mode: secret that authorises reading this app's inbox
   botUsername: string;
   chatId: number | null;
   pairCode: string | null;
@@ -80,12 +84,15 @@ export const CompletionSchema = z
   .passthrough();
 
 const TelegramSchema = z.object({
-  token: z.string().min(20).max(200),
+  mode: z.enum(["browser", "server"]).default("browser"),
+  token: z.string().max(200).default(""),
+  serverUrl: z.string().max(300).default(""),
+  inboxKey: z.string().max(64).default(""),
   botUsername: z.string().max(100),
   chatId: z.number().nullable(),
   pairCode: z.string().max(20).nullable(),
   pairExpires: z.number().nullable(),
-  offset: z.number().int().min(0),
+  offset: z.number().int().min(0).default(0),
 });
 
 // ─── Keys ─────────────────────────────────────────────────────────────────────

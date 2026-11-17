@@ -84,9 +84,32 @@ All entry points share one parser: `src/lib/task-parser.ts` (pure, EN + AR, unit
 - iOS caveat (documented on the page): a Home-Screen web app has storage separate from Safari —
   Shortcuts opens Safari, so use the site in Safari.
 
-## Telegram (browser-polled, no server)
+## Telegram — two modes (`src/lib/telegram.ts`, `components/settings/TelegramCard.tsx`)
 
-`src/lib/telegram.ts` + `components/settings/TelegramCard.tsx`. The browser calls
+**Server mode (recommended, `telegram-bot/` on Vercel)** — the bot answers instantly 24/7, even
+with the app closed. The server never stores the task list, only raw message text in a Redis
+inbox until the app collects it. Flow: app `POST /api/pair` → `{code, inboxKey, bot}`; user sends
+`/link CODE`; server binds `chat:<id>`↔`inboxKey` (+`linked:<key>`); messages `RPUSH inbox:<key>`;
+app `GET /api/inbox` (Bearer inboxKey) → parses with the shared parser → creates tasks → then
+`POST /api/inbox {count}` acks (at-least-once; an in-memory guard avoids duplicates if an ack
+fails). Other endpoints: `/api/webhook` (secret-header checked), `/api/status` (public health, no
+secrets), `/api/setup?key=<secret>` (registers the webhook for the deployment host — no manual
+setWebhook). "New code" revokes the old code (`previousCode`); a linked chat can re-link and its
+pending messages move to the new inbox. Pairing is rate limited (30/min). The app's CSP allows
+`https://*.vercel.app` only — a custom domain needs adding to `connect-src` (layout.tsx +
+next.config.ts).
+Deploy (Vercel): New Project → import this repo → **Root Directory `telegram-bot`** → env
+`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` (any long random string) → Storage → add
+**Upstash Redis** and connect it (adds `KV_REST_API_URL/TOKEN` or `UPSTASH_REDIS_REST_*`) →
+redeploy → open `https://<project>.vercel.app/api/setup?key=<secret>` once → paste the
+`https://<project>.vercel.app` address in TaskFlow → Settings → Telegram → Connect server. Use the
+production domain, not a preview URL (previews are behind Vercel Authentication).
+Tested locally against fakes of Upstash REST and the Bot API running the real `api/*.ts`
+(`tsc --strict` against `@vercel/node` types too). It has NOT been run on real Vercel/Upstash/
+Telegram — the dev sandbox cannot reach them. If setup fails, `/api/status` and the app's
+"Check connection" name the missing piece.
+
+**Browser mode (no server)** — the browser calls
 `api.telegram.org/bot<token>/getUpdates` directly (form-encoded POST = no CORS preflight).
 - Pairing: Settings generates an 8-char code (15 min TTL); sending `/link CODE` (or the
   `?start=link_CODE` deep link) from Telegram stores that `chat_id`. Only that private chat is
@@ -108,15 +131,10 @@ All entry points share one parser: `src/lib/task-parser.ts` (pure, EN + AR, unit
 - **Check connection** (Settings) runs getMe + getWebhookInfo (removing a leftover webhook) and
   reports linked/last-check — ask the user for this output before guessing.
 - Polls also fire on `focus`/`pageshow`/`online` (returning from the Telegram app on a phone).
-- Known limit: nothing happens while TaskFlow isn't open in a visible tab — the bot can't reply
-  and tasks wait at Telegram (24 h). An always-on bot needs a server + store (e.g. Vercel +
-  Upstash); not built. Real api.telegram.org could not be reached from the dev sandbox, so all
-  Telegram tests use a mocked Bot API (`tg-e2e` style: 401, 409, network abort, leftover webhook,
-  two tabs, backlog while closed).
-
-**Legacy**: `telegram-bot/` (Vercel webhook with its own task list, not synced with the web app)
-and `supabase/functions/` are not used by the app. The Vercel bot's Upstash calls and HTML
-escaping were fixed but untested against real Upstash. Both are excluded in `tsconfig.json`.
+- Known limit of browser mode: nothing happens while TaskFlow isn't open in a visible tab — the bot
+  can't reply and tasks wait at Telegram (24 h). Server mode removes that.
+- Real api.telegram.org could not be reached from the dev sandbox, so Telegram tests use a mocked
+  Bot API (401, 409, network abort, leftover webhook, two tabs, backlog while closed).
 
 ## Backup
 
@@ -191,6 +209,6 @@ src/
     task-parser.ts              EN/AR text → task fields
     capture.ts  telegram.ts  backup.ts  utils.ts
   store/                        Zustand: useTaskStore (createTasks, merge-safe reorder), useHabitStore
-telegram-bot/                   LEGACY Vercel webhook (not used by the app)
+telegram-bot/                   Always-on bot server for Vercel: api/{webhook,pair,inbox,status,setup}.ts + lib/core.ts
 supabase/functions/             LEGACY, unused
 ```
