@@ -97,6 +97,22 @@ All entry points share one parser: `src/lib/task-parser.ts` (pure, EN + AR, unit
   disables the legacy Vercel bot below.
 - Token is stored encrypted in this browser only (key `tf_telegram`), excluded from backups.
 - Offset is saved after tasks are created → at-least-once delivery.
+- Forgiving input: `normalizeToken()` strips `< >`, quotes, whitespace and a `bot` prefix (people
+  paste tokens as `<bot123:ABC>`). The token field is plain text on purpose so a stray character
+  is visible. The bare 8-char code, `/link CODE` and `/start@bot link_CODE` all pair.
+- Errors are classified (`TelegramError.kind`): 401/404 → "token not accepted, copy it again from
+  @BotFather"; fetch failure → "can't reach api.telegram.org (VPN/ad-blocker/company network)";
+  409 → the app deletes the leftover webhook itself and recovers on the next poll.
+- While pairing, any private message that isn't the current code gets one helpful reply per poll
+  (silence made a wrong/expired code look like a dead bot). After pairing, other chats are ignored.
+- **Check connection** (Settings) runs getMe + getWebhookInfo (removing a leftover webhook) and
+  reports linked/last-check — ask the user for this output before guessing.
+- Polls also fire on `focus`/`pageshow`/`online` (returning from the Telegram app on a phone).
+- Known limit: nothing happens while TaskFlow isn't open in a visible tab — the bot can't reply
+  and tasks wait at Telegram (24 h). An always-on bot needs a server + store (e.g. Vercel +
+  Upstash); not built. Real api.telegram.org could not be reached from the dev sandbox, so all
+  Telegram tests use a mocked Bot API (`tg-e2e` style: 401, 409, network abort, leftover webhook,
+  two tabs, backlog while closed).
 
 **Legacy**: `telegram-bot/` (Vercel webhook with its own task list, not synced with the web app)
 and `supabase/functions/` are not used by the app. The Vercel bot's Upstash calls and HTML

@@ -56,9 +56,12 @@ function TelegramSync() {
     };
     tick();
     const id = setInterval(tick, interval);
+    const resume = ["focus", "pageshow", "online"] as const;
+    resume.forEach((name) => window.addEventListener(name, tick));
     document.addEventListener("visibilitychange", tick);
     return () => {
       clearInterval(id);
+      resume.forEach((name) => window.removeEventListener(name, tick));
       document.removeEventListener("visibilitychange", tick);
     };
   }, [connected, interval]);

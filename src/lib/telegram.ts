@@ -19,6 +19,7 @@ import { formatDate } from "@/lib/utils";
 
 const API = "https://api.telegram.org";
 const PAIR_TTL_MS = 15 * 60 * 1000;
+const TOKEN_RE = /^\d{6,}:[\w-]{20,}$/;
 
 interface TgUser {
   id: number;
@@ -35,13 +36,30 @@ interface TgUpdate {
   message?: TgMessage;
 }
 
+type TelegramErrorKind = "network" | "token" | "conflict" | "rate" | "api";
+
 class TelegramError extends Error {
   constructor(
     message: string,
+    readonly kind: TelegramErrorKind,
     readonly code?: number,
   ) {
     super(message);
   }
+}
+
+const MSG_NETWORK =
+  "Couldn't reach Telegram from this browser. No connection, a VPN, an ad-blocker or a company network can block api.telegram.org.";
+const MSG_TOKEN =
+  "Telegram doesn't accept this token. Copy it again from @BotFather (/mybots → your bot → API Token) — without < > or spaces.";
+
+function describe(e: unknown): string {
+  return e instanceof Error ? e.message : "Unknown error";
+}
+
+/** Users paste tokens as "<123:ABC>", "bot123:ABC" or with spaces/newlines — accept all of them. */
+export function normalizeToken(raw: string): string {
+  return raw.replace(/[\s<>"'“”‘’]/g, "").replace(/^bot/i, "");
 }
 
 // Form-encoded POST is a "simple" CORS request: no preflight needed.
@@ -53,11 +71,21 @@ async function tg<T>(token: string, method: string, params: Record<string, strin
       body: new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])),
     });
   } catch {
-    throw new TelegramError("Network error — check your connection");
+    throw new TelegramError(MSG_NETWORK, "network");
   }
-  const data = (await res.json().catch(() => null)) as { ok: boolean; result: T; description?: string; error_code?: number } | null;
-  if (!data?.ok) throw new TelegramError(data?.description ?? `Telegram error ${res.status}`, data?.error_code ?? res.status);
-  return data.result;
+  const data = (await res.json().catch(() => null)) as {
+    ok: boolean;
+    result: T;
+    description?: string;
+    error_code?: number;
+  } | null;
+  if (data?.ok) return data.result;
+
+  const code = data?.error_code ?? res.status;
+  if (code === 401 || code === 404) throw new TelegramError(MSG_TOKEN, "token", code);
+  if (code === 409) throw new TelegramError(data?.description ?? "Another consumer is reading this bot", "conflict", code);
+  if (code === 429) throw new TelegramError("Telegram asked us to slow down — retrying shortly", "rate", code);
+  throw new TelegramError(data?.description ?? `Telegram error ${res.status}`, "api", code);
 }
 
 // ─── Status (in-memory) ───────────────────────────────────────────────────────
@@ -95,9 +123,9 @@ function newPairCode(): string {
 }
 
 export async function connectBot(rawToken: string): Promise<LocalTelegram> {
-  const token = rawToken.trim();
-  if (!/^\d{6,}:[\w-]{20,}$/.test(token)) {
-    throw new TelegramError("That doesn't look like a bot token (expected 123456:ABC…)");
+  const token = normalizeToken(rawToken);
+  if (!TOKEN_RE.test(token)) {
+    throw new TelegramError("That doesn't look like a bot token — it looks like 123456789:AAH… (copy it from @BotFather)", "token");
   }
   const me = await tg<{ username?: string }>(token, "getMe");
   await tg<boolean>(token, "deleteWebhook");
@@ -124,6 +152,54 @@ export function disconnectBot(): void {
   setStatus({ lastSync: null, error: null });
 }
 
+// ─── Diagnostics ──────────────────────────────────────────────────────────────
+
+export interface DiagStep {
+  label: string;
+  ok: boolean;
+  detail: string;
+}
+
+/** Step-by-step health check shown in Settings, so a failure names its own cause. */
+export async function diagnoseTelegram(): Promise<DiagStep[]> {
+  const cfg = localTelegram.get();
+  if (!cfg) return [{ label: "Bot connected", ok: false, detail: "Not connected" }];
+  const steps: DiagStep[] = [];
+
+  try {
+    const me = await tg<{ username?: string }>(cfg.token, "getMe");
+    steps.push({ label: "Telegram accepts the token", ok: true, detail: `@${me.username ?? "bot"}` });
+  } catch (e) {
+    steps.push({ label: "Telegram accepts the token", ok: false, detail: describe(e) });
+    return steps;
+  }
+
+  try {
+    const info = await tg<{ url?: string }>(cfg.token, "getWebhookInfo");
+    if (info.url) {
+      await tg<boolean>(cfg.token, "deleteWebhook");
+      const host = info.url.replace(/^https?:\/\//, "").split("/")[0];
+      steps.push({ label: "No webhook blocking polling", ok: true, detail: `Removed a leftover webhook (${host})` });
+    } else {
+      steps.push({ label: "No webhook blocking polling", ok: true, detail: "Clear" });
+    }
+  } catch (e) {
+    steps.push({ label: "No webhook blocking polling", ok: false, detail: describe(e) });
+  }
+
+  steps.push({
+    label: "Chat linked",
+    ok: cfg.chatId !== null,
+    detail: cfg.chatId !== null ? "Yes" : "Not yet — send the /link code to the bot",
+  });
+  steps.push({
+    label: "Last check",
+    ok: status.error === null,
+    detail: status.error ?? (status.lastSync ? new Date(status.lastSync).toLocaleTimeString() : "not yet"),
+  });
+  return steps;
+}
+
 // ─── Polling ──────────────────────────────────────────────────────────────────
 
 export interface PollResult {
@@ -132,9 +208,12 @@ export interface PollResult {
 }
 const EMPTY: PollResult = { added: [], linked: false };
 
-function extractLinkCode(text: string): string | null {
+/** "/link CODE", "/start link_CODE" (deep link) — and the bare code while pairing. */
+function extractLinkCode(text: string, allowBare: boolean): string | null {
   const m = /^\/(?:link|start)(?:@\w+)?\s+(?:link[_-])?([A-Za-z0-9]{6,12})\s*$/.exec(text);
-  return m ? m[1].toUpperCase() : null;
+  if (m) return m[1].toUpperCase();
+  const bare = allowBare ? /^([A-Za-z0-9]{8})$/.exec(text) : null;
+  return bare ? bare[1].toUpperCase() : null;
 }
 
 async function reply(token: string, chatId: number, text: string): Promise<void> {
@@ -150,6 +229,8 @@ const HELP =
   "Examples:\n• Buy milk tomorrow #personal !high\n• اشتري حليب بكرة\n\n" +
   "Tasks appear in TaskFlow the next time the app is open (within about 30 seconds).";
 
+const PAIR_HINT = "To link this chat, send the code shown in TaskFlow → Settings → Telegram, like:\n/link ABCD1234";
+
 async function runPoll(): Promise<PollResult> {
   const initial = localTelegram.get();
   if (!initial) return EMPTY;
@@ -162,15 +243,15 @@ async function runPoll(): Promise<PollResult> {
       allowed_updates: JSON.stringify(["message"]),
     });
   } catch (e) {
-    const err = e as TelegramError;
-    if (err.code === 409) {
+    if (e instanceof TelegramError && e.kind === "conflict") {
       await tg(initial.token, "deleteWebhook").catch(() => undefined);
     }
-    setStatus({ error: err.code === 401 ? "Bot token was rejected — reconnect the bot" : err.message });
+    setStatus({ error: describe(e) });
     return EMPTY;
   }
 
   const result: PollResult = { added: [], linked: false };
+  const hinted = new Set<number>();
   let nextOffset = initial.offset;
 
   for (const update of updates) {
@@ -181,12 +262,22 @@ async function runPoll(): Promise<PollResult> {
     const cfg = localTelegram.get();
     if (!cfg) return result; // disconnected while polling
     const text = msg.text?.trim() ?? "";
+    const pairing = cfg.chatId === null && cfg.pairCode !== null;
 
-    const code = extractLinkCode(text);
-    if (code && !cfg.chatId && cfg.pairCode === code && cfg.pairExpires && Date.now() < cfg.pairExpires) {
-      localTelegram.set({ ...cfg, chatId: msg.chat.id, pairCode: null, pairExpires: null });
-      result.linked = true;
-      await reply(cfg.token, msg.chat.id, "✅ Linked. Send me anything and it becomes a task in TaskFlow.");
+    if (pairing) {
+      const code = extractLinkCode(text, true);
+      if (code && code === cfg.pairCode) {
+        if (cfg.pairExpires !== null && Date.now() < cfg.pairExpires) {
+          localTelegram.set({ ...cfg, chatId: msg.chat.id, pairCode: null, pairExpires: null });
+          result.linked = true;
+          await reply(cfg.token, msg.chat.id, "✅ Linked. Send me anything and it becomes a task in TaskFlow.");
+        } else {
+          await reply(cfg.token, msg.chat.id, "That code expired. Press “New code” in TaskFlow → Settings → Telegram and try again.");
+        }
+      } else if (!hinted.has(msg.chat.id)) {
+        hinted.add(msg.chat.id);
+        await reply(cfg.token, msg.chat.id, code ? "That code is not the current one. Copy the latest from TaskFlow → Settings → Telegram." : PAIR_HINT);
+      }
       continue;
     }
 
