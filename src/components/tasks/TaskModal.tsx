@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Task, Priority, Category, Tag } from "@/types";
 import { useTaskStore } from "@/store/useTaskStore";
 import { X, Plus, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, todayLocal } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 interface TaskModalProps {
@@ -95,7 +95,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-base sticky top-0 bg-card z-10">
           <h2 className="font-bold text-base-fg">{task ? "Edit Task" : "New Task"}</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-fg hover:bg-secondary hover:text-base-fg transition-all">
+          <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-fg hover:bg-secondary hover:text-base-fg transition-all">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -186,7 +186,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
                 className="input-base"
-                min={new Date().toISOString().split("T")[0]}
+                min={todayLocal()}
               />
             </div>
           </div>

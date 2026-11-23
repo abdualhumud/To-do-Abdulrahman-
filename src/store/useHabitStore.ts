@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { Habit, HabitCompletion } from "@/types";
 import { localHabits, localCompletions, localUser, hydrateLocalStore } from "@/lib/local-store";
+import { formatLocalDate, todayLocal } from "@/lib/utils";
 
 interface HabitStore {
   habits: Habit[];
@@ -25,7 +26,7 @@ function now() {
 }
 
 function sevenDaysAgo() {
-  return new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  return formatLocalDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
 }
 
 export const useHabitStore = create<HabitStore>((set, get) => ({
@@ -112,7 +113,7 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
   },
 
   isCompletedToday: (habit) => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayLocal();
     return habit.completions?.some((c) => c.completed_at === today) ?? false;
   },
 }));

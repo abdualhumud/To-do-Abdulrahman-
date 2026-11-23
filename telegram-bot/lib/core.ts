@@ -82,6 +82,22 @@ function random(alphabet: string, length: number): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 
+/** Constant-time string comparison, so secrets can't be guessed from response timing. */
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Fixed-window limiter in Redis; returns true when the call should be refused. */
+async function limited(env: Env, bucket: string, max: number): Promise<boolean> {
+  const key = `rate:${bucket}:${Math.floor(Date.now() / 60_000)}`;
+  const used = Number(await redis(env, ["INCR", key]));
+  if (used === 1) await redis(env, ["EXPIRE", key, 120]);
+  return used > max;
+}
+
 function cors(env: Env): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": env.appOrigin,
@@ -158,6 +174,10 @@ async function onMessage(env: Env, msg: TgMessage): Promise<void> {
     await say(env, chatId, "✅ Linked to the new TaskFlow connection.");
     return;
   }
+  if (relinkCode && /^\/(?:link|start)(?:@\w+)?\s/.test(text)) {
+    await say(env, chatId, "That code is wrong or expired. Press Connect again in TaskFlow → Settings → Telegram.");
+    return;
+  }
 
   if (text.startsWith("/")) {
     if (/^\/(start|help)\b/.test(text)) await say(env, chatId, HELP);
@@ -183,7 +203,7 @@ async function onMessage(env: Env, msg: TgMessage): Promise<void> {
 export async function handleWebhook(env: Env, headers: Record<string, string | undefined>, body: unknown): Promise<Result> {
   const problem = missingConfig(env);
   if (problem) return { status: 500, body: { ok: false, error: problem } };
-  if (headers["x-telegram-bot-api-secret-token"] !== env.secret) return { status: 401, body: { ok: false } };
+  if (!safeEqual(headers["x-telegram-bot-api-secret-token"] ?? "", env.secret)) return { status: 401, body: { ok: false } };
   try {
     const update = body as { message?: TgMessage };
     if (update?.message) await onMessage(env, update.message);
@@ -202,10 +222,7 @@ export async function handlePair(env: Env, method: string, body?: unknown): Prom
   const problem = missingConfig(env);
   if (problem) return json(env, 503, { ok: false, error: problem });
 
-  const minute = Math.floor(Date.now() / 60_000);
-  const used = Number(await redis(env, ["INCR", `rate:pair:${minute}`]));
-  if (used === 1) await redis(env, ["EXPIRE", `rate:pair:${minute}`, 120]);
-  if (used > 30) return json(env, 429, { ok: false, error: "Too many attempts, wait a minute" });
+  if (await limited(env, "pair", 30)) return json(env, 429, { ok: false, error: "Too many attempts, wait a minute" });
 
   const previous = String((body as { previousCode?: string } | null)?.previousCode ?? "").toUpperCase();
   if (/^[A-Z0-9]{6,12}$/.test(previous)) await redis(env, ["DEL", `pair:${previous}`]); // "New code" revokes the old one
@@ -260,6 +277,14 @@ export async function handleInbox(
 /** Public, secret-free health report: used by the app's "Check connection". */
 export async function handleStatus(env: Env, method: string): Promise<Result> {
   if (method === "OPTIONS") return preflight(env);
+  // Public endpoint that calls Telegram: bound the cost of abuse (only when Redis is available to count).
+  if (env.redisUrl && env.redisToken) {
+    try {
+      if (await limited(env, "status", 60)) return json(env, 429, { ok: false, error: "Too many requests, wait a minute" });
+    } catch {
+      /* Redis down: still report below */
+    }
+  }
   const report: Record<string, unknown> = { ok: true, configured: missingConfig(env) === null, problem: missingConfig(env) };
   if (env.token) {
     try {
@@ -287,7 +312,7 @@ export async function handleStatus(env: Env, method: string): Promise<Result> {
 export async function handleSetup(env: Env, query: Record<string, string | undefined>, host: string): Promise<Result> {
   const problem = missingConfig(env);
   if (problem) return { status: 500, body: { ok: false, error: problem } };
-  if (!query.key || query.key !== env.secret) return { status: 401, body: { ok: false, error: "Add ?key=<your TELEGRAM_WEBHOOK_SECRET>" } };
+  if (!query.key || !safeEqual(query.key, env.secret)) return { status: 401, body: { ok: false, error: "Add ?key=<your TELEGRAM_WEBHOOK_SECRET>" } };
   await tg(env, "setWebhook", {
     url: `https://${host}/api/webhook`,
     secret_token: env.secret,

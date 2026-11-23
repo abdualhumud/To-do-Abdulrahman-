@@ -135,7 +135,7 @@ export function Header({ user }: HeaderProps) {
             <button
               onClick={() => setSearchOpen(true)}
               className="w-9 h-9 rounded-xl flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all"
-              title="Search (press /)"
+              title="Search" aria-label="Search tasks"
             >
               <Search className="w-4 h-4" />
             </button>
@@ -145,7 +145,7 @@ export function Header({ user }: HeaderProps) {
           <button
             onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
             className="w-9 h-9 rounded-xl flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all"
-            title="Toggle theme"
+            title="Toggle theme" aria-label="Toggle theme"
           >
             {resolvedTheme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>

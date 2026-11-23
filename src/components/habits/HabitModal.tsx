@@ -47,7 +47,7 @@ export function HabitModal({ habit, onClose }: HabitModalProps) {
       <div className="relative w-full max-w-md card shadow-2xl animate-slide-up">
         <div className="flex items-center justify-between p-5 border-b border-base">
           <h2 className="font-bold text-base-fg">{habit ? "Edit Habit" : "New Habit"}</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-fg hover:bg-secondary hover:text-base-fg transition-all">
+          <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-fg hover:bg-secondary hover:text-base-fg transition-all">
             <X className="w-4 h-4" />
           </button>
         </div>

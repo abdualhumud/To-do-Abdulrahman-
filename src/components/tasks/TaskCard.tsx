@@ -82,7 +82,8 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
         <button
           {...attributes}
           {...listeners}
-          className="mt-0.5 text-muted-fg hover:text-secondary-fg cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 touch-none"
+          aria-label="Drag to reorder"
+          className="mt-0.5 text-muted-fg hover:text-secondary-fg cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex-shrink-0 touch-none"
           tabIndex={-1}
         >
           <GripVertical className="w-4 h-4" />
@@ -91,6 +92,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
         {/* Checkbox */}
         <button
           onClick={() => toggleTask(task.id)}
+          aria-label={isCompleted ? "Mark as not done" : "Mark as done"}
           className={cn(
             "mt-0.5 flex-shrink-0 transition-all duration-200",
             isCompleted ? "text-success scale-110" : "text-muted-fg hover:text-primary hover:scale-110"
@@ -117,18 +119,18 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
             </div>
 
             {/* Action buttons — visible on hover */}
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex-shrink-0">
               <button
                 onClick={() => onEdit(task)}
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-accent hover:text-primary transition-all"
-                title="Edit"
+                title="Edit" aria-label="Edit task"
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={handleDelete}
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-red-50 hover:text-danger dark:hover:bg-red-900/20 transition-all"
-                title="Delete"
+                title="Delete" aria-label="Delete task"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -220,6 +222,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                 <div key={sub.id} className="flex items-center gap-2 group/sub">
                   <button
                     onClick={() => toggleSubTask(sub.id, task.id, !sub.completed)}
+                    aria-label={`Mark "${sub.title}" as ${sub.completed ? "not done" : "done"}`}
                     className={cn(
                       "flex-shrink-0 transition-colors",
                       sub.completed ? "text-success" : "text-muted-fg hover:text-primary"
@@ -232,7 +235,8 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                   </span>
                   <button
                     onClick={() => deleteSubTask(sub.id, task.id)}
-                    className="opacity-0 group-hover/sub:opacity-100 text-muted-fg hover:text-danger transition-all"
+                    aria-label="Delete subtask"
+                    className="opacity-0 group-hover/sub:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 text-muted-fg hover:text-danger transition-all"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>

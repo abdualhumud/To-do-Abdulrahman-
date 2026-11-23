@@ -1,3 +1,4 @@
+import { todayLocal } from "@/lib/utils";
 import {
   CompletionSchema,
   HabitSchema,
@@ -47,7 +48,7 @@ export function downloadBackup(): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `taskflow-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `taskflow-backup-${todayLocal()}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();

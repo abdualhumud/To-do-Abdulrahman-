@@ -10,7 +10,7 @@ Live: `https://abdualhumud.github.io/To-do-Abdulrahman-/` · Branch: `claude/bui
 
 A local-first productivity app (tasks, habits, Pomodoro, analytics) built with Next.js 16
 (`output: "export"`) and deployed as a static site to GitHub Pages. There is **no backend**:
-all data lives in the browser. Supabase packages/functions are legacy and unused at runtime.
+all data lives in the browser. (Supabase code/deps and 16 unused UI deps were removed — don't re-add them.)
 
 ```ts
 // next.config.ts — required for GitHub Pages
@@ -20,7 +20,9 @@ trailingSlash: true,
 images: { unoptimized: true },
 ```
 
-Commands: `npm ci` · `npm run lint` · `node_modules/.bin/next build` (output in `out/`).
+Commands: `npm ci` · `npm run lint` · `npm test` (unit) · `node_modules/.bin/next build` (output in `out/`) ·
+`npm run test:e2e` (browser suites). CI runs lint + unit tests before build/deploy. `npm audit` is at 0 — keep
+`next` on a patched release (it was pinned to an old exact version that carried a critical advisory).
 
 ---
 
@@ -95,7 +97,7 @@ app `GET /api/inbox` (Bearer inboxKey) → parses with the shared parser → cre
 fails). Other endpoints: `/api/webhook` (secret-header checked), `/api/status` (public health, no
 secrets), `/api/setup?key=<secret>` (registers the webhook for the deployment host — no manual
 setWebhook). "New code" revokes the old code (`previousCode`); a linked chat can re-link and its
-pending messages move to the new inbox. Pairing is rate limited (30/min). The app's CSP allows
+pending messages move to the new inbox. Pairing is rate limited (30/min), `/api/status` too (60/min); secrets are compared in constant time. The app's CSP allows
 `https://*.vercel.app` only — a custom domain needs adding to `connect-src` (layout.tsx +
 next.config.ts).
 Deploy (Vercel): New Project → import this repo → **Root Directory `telegram-bot`** → env
@@ -167,24 +169,41 @@ Settings → Export/Import (`src/lib/backup.ts`): JSON with tasks/tags/habits/co
 - `actions/configure-pages@v5` must come **before** the build step (root cause of every early
   failure). Placeholder Supabase env vars satisfy the build. Free plan needs a **public** repo.
 - Triggers: push to `main` and `claude/build-todo-app-BLpsC`, plus manual dispatch.
-- `tsconfig.json` must exclude sub-projects with other toolchains (`supabase/functions`,
-  `telegram-bot`).
+- `tsconfig.json` must exclude sub-projects with other toolchains (`telegram-bot`); it allows `.ts`
+  import extensions for the Node-run tests. Workflow actions are on Node-24 majors (checkout v7,
+  setup-node v7, configure-pages v6, upload-pages-artifact v5, deploy-pages v5) with Node 22.
 
 ## Security notes
-- CSP is injected as a `<meta>` in `src/app/layout.tsx` (static hosting can't send headers);
-  `connect-src` already allows `https://api.telegram.org`. Keep `next.config.ts` in sync.
+- CSP is injected as a `<meta>` in `src/app/layout.tsx` — the single source of truth (headers() in
+  next.config.ts is ignored with `output: "export"`, so it was removed). `connect-src` allows only
+  `https://api.telegram.org` and `https://*.vercel.app`.
 - No wildcard `remotePatterns`. Sign-out asks for confirmation (it clears the profile, not tasks).
 - A capture link can add tasks (≤100 per link, text only, rendered escaped by React). That is
   the price of one-tap Shortcuts; nothing is read or deleted by links.
 - Never paste PATs/bot tokens into chats — rotate any that were.
 
 ## How to verify (do this, don't trust the type checker)
-1. `npm run lint && node_modules/.bin/next build`
-2. Serve `out/` under `/To-do-Abdulrahman-/` with a tiny static server and drive it with
-   Playwright using `launchPersistentContext(dir)` — closing and relaunching it is a real
-   browser restart (a fresh context is NOT, it loses IndexedDB). Mock Telegram with
-   `page.route("https://api.telegram.org/**")` (add `access-control-allow-origin: *`).
+1. `npm run lint && npm test && node_modules/.bin/next build`
+   - `tests/unit/*.test.ts` use Node's built-in runner with `--experimental-strip-types` (so
+     imports in tested files need explicit `.ts` and no `@/` alias; the parser is deliberately
+     dependency-free). `bot-server.test.ts` stubs `fetch` with fakes of Upstash REST + the Bot API.
+   - Run unit tests under several `TZ=` values when touching dates.
+2. `npm run test:e2e` — `tests/e2e/run.mjs` serves `out/` under `/To-do-Abdulrahman-/`, starts the
+   bot harness (`bot-harness.mts`: fake Redis + fake Telegram + the real `telegram-bot/api/*.ts`
+   via `npx tsx`) and drives Chromium with Playwright using `launchPersistentContext(dir)` —
+   closing and relaunching it is a real browser restart (a fresh context is NOT, it loses
+   IndexedDB). Telegram is mocked with `page.route` (add `access-control-allow-origin: *`).
 3. Take screenshots (light, dark, 390px mobile) — functional tests don't catch design bugs.
+4. Type-check the Vercel functions strictly against `@vercel/node` (they are excluded from the
+   Next tsconfig).
+
+## Dates
+Never build a day string with `toISOString()` (it is UTC; off by a day around midnight in UTC+3 and
+for evenings in the Americas). Use `todayLocal()` / `formatLocalDate()` / `parseDate()`.
+
+## Accessibility notes
+Icon-only buttons need `aria-label`. Hover-revealed controls must also be visible on touch and on
+focus: `opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100`.
 
 ---
 
@@ -210,5 +229,5 @@ src/
     capture.ts  telegram.ts  backup.ts  utils.ts
   store/                        Zustand: useTaskStore (createTasks, merge-safe reorder), useHabitStore
 telegram-bot/                   Always-on bot server for Vercel: api/{webhook,pair,inbox,status,setup}.ts + lib/core.ts
-supabase/functions/             LEGACY, unused
+tests/unit, tests/e2e           node:test suites (CI) and Playwright suites (manual)
 ```

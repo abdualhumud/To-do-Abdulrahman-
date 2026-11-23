@@ -1,5 +1,6 @@
 "use client";
 
+import { todayLocal } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { useHabitStore } from "@/store/useHabitStore";
 import { HabitCard } from "@/components/habits/HabitCard";
@@ -16,7 +17,7 @@ export default function HabitsPage() {
     fetchHabits();
   }, [fetchHabits]);
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayLocal();
   const completedToday = habits.filter((h) =>
     h.completions?.some((c) => c.completed_at === todayStr)
   ).length;

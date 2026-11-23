@@ -1,9 +1,7 @@
 name: Deploy to GitHub Pages
 
-# ─── Triggers ─────────────────────────────────────────────────────────────────
-# Deploys automatically on push to main (production) or the active
-# feature branch.  You can also trigger a manual deploy from the
-# Actions tab using "Run workflow".
+# Lint and unit tests gate every build; the site deploys only if they pass.
+# Run manually from the Actions tab with "Run workflow" at any time.
 on:
   push:
     branches:
@@ -11,7 +9,6 @@ on:
       - claude/build-todo-app-BLpsC
   workflow_dispatch:
 
-# ─── Permissions ──────────────────────────────────────────────────────────────
 permissions:
   contents: read
   pages: write
@@ -22,39 +19,39 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
-# ─── Jobs ─────────────────────────────────────────────────────────────────────
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
+      # Must run before the build so Next.js gets the Pages base path
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
         with:
           static_site_generator: next
 
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
       - name: Build
-        env:
-          # App runs in localStorage-only mode — no Supabase account needed.
-          # These placeholders satisfy the build; they are NOT used at runtime.
-          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
-          NEXT_PUBLIC_APP_URL: https://${{ github.repository_owner }}.github.io/To-do-Abdulrahman-
         run: npm run build
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ./out
 
@@ -67,4 +64,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

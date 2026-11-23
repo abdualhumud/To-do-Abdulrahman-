@@ -114,12 +114,14 @@ export function PomodoroTimer() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleReset}
+              aria-label="Reset timer"
               className="w-9 h-9 rounded-lg flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
             <button
               onClick={handleToggle}
+              aria-label={running ? "Pause timer" : "Start timer"}
               className="w-12 h-12 rounded-xl text-white flex items-center justify-center transition-all hover:opacity-90 shadow-lg"
               style={{ background: MODES[mode].color }}
             >

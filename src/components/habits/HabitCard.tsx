@@ -3,7 +3,7 @@
 import { Habit } from "@/types";
 import { useHabitStore } from "@/store/useHabitStore";
 import { Check, Edit2, Trash2, Flame } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, todayLocal } from "@/lib/utils";
 import { format, subDays } from "date-fns";
 import toast from "react-hot-toast";
 
@@ -14,7 +14,7 @@ interface HabitCardProps {
 
 export function HabitCard({ habit, onEdit }: HabitCardProps) {
   const { toggleHabitCompletion, deleteHabit, isCompletedToday } = useHabitStore();
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayLocal();
   const completed = isCompletedToday(habit);
 
   // Calculate streak
@@ -69,15 +69,17 @@ export function HabitCard({ habit, onEdit }: HabitCardProps) {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
               <button
                 onClick={() => onEdit(habit)}
+                aria-label="Edit habit"
                 className="w-7 h-7 rounded-md flex items-center justify-center text-muted-fg hover:bg-secondary hover:text-base-fg transition-all"
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={handleDelete}
+                aria-label="Delete habit"
                 className="w-7 h-7 rounded-md flex items-center justify-center text-muted-fg hover:bg-red-50 hover:text-danger dark:hover:bg-red-900/20 transition-all"
               >
                 <Trash2 className="w-3.5 h-3.5" />

@@ -32,7 +32,7 @@ export default function LandingPage() {
             </span>
           </h1>
           <p className="text-xl text-secondary-fg max-w-2xl mx-auto mb-10 leading-relaxed">
-            TaskFlow is the modern task manager built for high-performers. Manage tasks, track habits, visualize progress, and receive AI-powered daily digest emails.
+            TaskFlow is a local-first task manager. Manage tasks, track habits, run Pomodoro sessions, and add tasks from Apple Shortcuts, Notes or Telegram — your data stays in your browser.
           </p>
           <div className="flex items-center justify-center gap-4 flex-wrap">
             <Link href="/register" className="btn-primary text-base px-8 py-3.5">Start for Free</Link>
@@ -49,7 +49,7 @@ export default function LandingPage() {
             {[
               { icon: "✅", bg: "rgb(var(--accent))", title: "Smart Task Management", desc: "Create tasks with priorities, categories, tags, due dates, and subtasks. Drag-and-drop to reorder effortlessly." },
               { icon: "📊", bg: "rgba(34, 197, 94, 0.15)", title: "Progress Analytics", desc: "Visual charts showing productivity trends, completion rates, and category breakdowns over time." },
-              { icon: "📧", bg: "rgba(245, 158, 11, 0.15)", title: "Daily Digest Emails", desc: "Get a personalized productivity report every morning with completed tasks, pending items, and your score." },
+              { icon: "⚡", bg: "rgba(245, 158, 11, 0.15)", title: "Add Tasks Anywhere", desc: "Capture from Apple Shortcuts, Siri, Notes, Telegram or a simple link — in Arabic or English, with dates and priorities understood." },
               { icon: "🔥", bg: "rgba(239, 68, 68, 0.15)", title: "Habit Tracker", desc: "Build powerful daily habits with streak tracking and visual completion indicators." },
               { icon: "⏱️", bg: "rgba(139, 92, 246, 0.15)", title: "Pomodoro Timer", desc: "Stay in flow with an integrated Pomodoro timer linked to your specific tasks." },
               { icon: "🌙", bg: "rgba(99, 102, 241, 0.15)", title: "Dark & Light Mode", desc: "Sleek, eye-friendly interface that adapts to your environment. Your productivity, your way." },
@@ -67,7 +67,7 @@ export default function LandingPage() {
       <section className="py-20 px-6">
         <div className="max-w-3xl mx-auto rounded-2xl p-12 text-center" style={{ background: "linear-gradient(135deg, rgb(var(--primary)), rgb(var(--accent-fg)))" }}>
           <h2 className="text-3xl font-bold text-white mb-4">Ready to transform your productivity?</h2>
-          <p className="text-white/80 mb-8">Join thousands of high-performers already using TaskFlow.</p>
+          <p className="text-white/80 mb-8">No account, no tracking — everything is saved privately in your browser.</p>
           <Link href="/register" className="inline-flex items-center gap-2 bg-white font-bold px-8 py-3.5 rounded-xl hover:opacity-90 transition-opacity" style={{ color: "rgb(var(--primary))" }}>
             Get Started — It&apos;s Free
           </Link>

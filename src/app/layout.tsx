@@ -5,18 +5,18 @@ import { Toaster } from "react-hot-toast";
 
 export const metadata: Metadata = {
   title: "TaskFlow — Personal Productivity System",
-  description: "A powerful, modern personal task management system with analytics, habits, and daily reports.",
+  description: "A local-first task manager with habits, a Pomodoro timer and analytics. Add tasks from Apple Shortcuts, Notes or Telegram.",
 };
 
 // CSP meta tag — effective on GitHub Pages (static hosting) where HTTP headers can't be set.
-// The same policy is also set via next.config.ts headers() for non-static deployments.
+// Single source of truth: next.config.ts cannot send headers with `output: "export"`.
 const CSP_META = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https://avatars.githubusercontent.com https://lh3.googleusercontent.com",
   "font-src 'self'",
-  "connect-src 'self' https://*.supabase.co https://api.telegram.org https://*.vercel.app",
+  "connect-src 'self' https://api.telegram.org https://*.vercel.app",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -29,8 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         {/* Security: Content-Security-Policy — prevents XSS and data exfiltration */}
         <meta httpEquiv="Content-Security-Policy" content={CSP_META} />
-        <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
-        <meta httpEquiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+        <meta name="referrer" content="strict-origin-when-cross-origin" />
       </head>
       <body>
         <ThemeProvider>

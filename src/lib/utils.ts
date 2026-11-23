@@ -5,6 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export { formatLocalDate } from "./task-parser";
+import { formatLocalDate } from "./task-parser";
+
+/** Today as a local yyyy-MM-dd string (never use toISOString() for this — it is UTC). */
+export function todayLocal(): string {
+  return formatLocalDate(new Date());
+}
+
 /** Date-only strings (yyyy-MM-dd) are local calendar days, not UTC instants. */
 export function parseDate(date: Date | string): Date {
   if (typeof date !== "string") return date;
