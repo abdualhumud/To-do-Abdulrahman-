@@ -14,8 +14,10 @@ import { taskFromParsed } from "@/lib/reminder-fields";
 import { ClipboardList, Plus, Timer, ChevronDown } from "lucide-react";
 import { Task } from "@/types";
 import toast from "react-hot-toast";
+import { useT } from "@/lib/i18n";
 
 export default function DashboardPage() {
+  const t = useT();
   const createTasks = useTaskStore((s) => s.createTasks);
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -52,7 +54,7 @@ export default function DashboardPage() {
     if (!parsed) return;
     setQuickTitle("");
     const [task] = await createTasks([taskFromParsed(parsed)]);
-    if (task) toast.success(`Added: ${task.title}`);
+    if (task) toast.success(t("Added: {title}", { title: task.title }));
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
@@ -97,17 +99,17 @@ export default function DashboardPage() {
             onPaste={handlePaste}
             dir="auto"
             className="flex-1 bg-transparent text-sm text-base-fg outline-none placeholder:text-muted-fg"
-            placeholder="Quick add — try “Call mom tomorrow !high” (press / to focus)"
+            placeholder={t("Quick add — e.g. Call mom tomorrow")}
           />
           {quickTitle && (
             <button type="submit" className="text-xs font-semibold text-primary hover:underline flex-shrink-0">
-              Add
+              {t("Add")}
             </button>
           )}
         </div>
         {parsed && (parsed.due_date || parsed.priority || parsed.category || parsed.time || parsed.repeat) && (
-          <div className="pl-10 flex items-center gap-2 text-xs text-muted-fg animate-fade-in">
-            <span>Will add as</span>
+          <div className="ps-10 flex items-center gap-2 text-xs text-muted-fg animate-fade-in">
+            <span>{t("Will add as")}</span>
             <TaskPreviewChips task={parsed} />
           </div>
         )}
@@ -117,23 +119,23 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <FilterBar />
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={openImport} className="btn-secondary h-9 px-3 text-sm gap-1.5" title="Import a list from Notes" aria-label="Import">
+          <button onClick={openImport} className="btn-secondary h-9 px-3 text-sm gap-1.5" title={t("Import a list from Notes")} aria-label={t("Import")}>
             <ClipboardList className="w-4 h-4" />
-            <span className="hidden sm:block">Import</span>
+            <span className="hidden sm:block">{t("Import")}</span>
           </button>
           <button
             onClick={() => setShowPomodoro(!showPomodoro)}
             className={`btn-secondary h-9 px-3 text-sm gap-1.5 ${showPomodoro ? "bg-accent text-accent-fg border-primary" : ""}`}
-            title="Pomodoro Timer"
-            aria-label="Pomodoro"
+            title={t("Pomodoro Timer")}
+            aria-label={t("Pomodoro")}
           >
             <Timer className="w-4 h-4" />
-            <span className="hidden sm:block">Pomodoro</span>
+            <span className="hidden sm:block">{t("Pomodoro")}</span>
             <ChevronDown className={`w-3 h-3 hidden sm:block transition-transform ${showPomodoro ? "rotate-180" : ""}`} />
           </button>
-          <button onClick={() => setShowTaskModal(true)} className="btn-primary h-9 px-3.5 text-sm" aria-label="New Task">
+          <button onClick={() => setShowTaskModal(true)} className="btn-primary h-9 px-3.5 text-sm" aria-label={t("New Task")}>
             <Plus className="w-4 h-4" />
-            <span className="hidden sm:block">New Task</span>
+            <span className="hidden sm:block">{t("New Task")}</span>
           </button>
         </div>
       </div>
@@ -145,6 +147,14 @@ export default function DashboardPage() {
       )}
 
       <TaskList onEditTask={handleEditTask} />
+
+      <button
+        onClick={() => setShowTaskModal(true)}
+        className="md:hidden fixed z-40 end-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] w-14 h-14 rounded-full bg-primary text-primary-fg shadow-lg flex items-center justify-center active:scale-95 transition-transform"
+        aria-label={t("New Task")}
+      >
+        <Plus className="w-7 h-7" />
+      </button>
 
       {showTaskModal && <TaskModal task={editingTask} onClose={handleCloseModal} />}
       {showImport && <ImportTasksModal initialText={importText} onClose={() => setShowImport(false)} />}

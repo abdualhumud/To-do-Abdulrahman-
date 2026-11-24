@@ -12,8 +12,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { format, subDays } from "date-fns";
+import { useT, useLang, fmtPattern } from "@/lib/i18n";
 
 export function ProductivityChart() {
+  const t = useT();
+  const lang = useLang();
   const { tasks } = useTaskStore();
 
   const data = useMemo(() => {
@@ -25,9 +28,9 @@ export function ProductivityChart() {
         return t.completed_at.startsWith(dateStr);
       }).length;
       const created = tasks.filter((t) => t.created_at.startsWith(dateStr)).length;
-      return { day: format(date, "EEE"), completed, created };
+      return { day: fmtPattern(date, "EEE", lang), completed, created };
     });
-  }, [tasks]);
+  }, [tasks, lang]);
 
   return (
     <ResponsiveContainer width="100%" height={200}>
@@ -54,8 +57,8 @@ export function ProductivityChart() {
             color: "rgb(var(--fg))",
           }}
         />
-        <Area type="monotone" dataKey="completed" stroke="rgb(99,102,241)" fill="url(#colorCompleted)" strokeWidth={2} name="Completed" dot={{ fill: "rgb(99,102,241)", r: 3 }} />
-        <Area type="monotone" dataKey="created" stroke="rgb(34,197,94)" fill="url(#colorCreated)" strokeWidth={2} name="Created" dot={{ fill: "rgb(34,197,94)", r: 3 }} />
+        <Area type="monotone" dataKey="completed" stroke="rgb(99,102,241)" fill="url(#colorCompleted)" strokeWidth={2} name={t("Completed")} dot={{ fill: "rgb(99,102,241)", r: 3 }} />
+        <Area type="monotone" dataKey="created" stroke="rgb(34,197,94)" fill="url(#colorCreated)" strokeWidth={2} name={t("Created")} dot={{ fill: "rgb(34,197,94)", r: 3 }} />
       </AreaChart>
     </ResponsiveContainer>
   );

@@ -5,6 +5,7 @@ import { useHabitStore } from "@/store/useHabitStore";
 import { Check, Edit2, Trash2, Flame } from "lucide-react";
 import { cn, todayLocal } from "@/lib/utils";
 import { format, subDays } from "date-fns";
+import { useT, fmtPattern } from "@/lib/i18n";
 import toast from "react-hot-toast";
 
 interface HabitCardProps {
@@ -13,6 +14,7 @@ interface HabitCardProps {
 }
 
 export function HabitCard({ habit, onEdit }: HabitCardProps) {
+  const t = useT();
   const { toggleHabitCompletion, deleteHabit, isCompletedToday } = useHabitStore();
   const todayStr = todayLocal();
   const completed = isCompletedToday(habit);
@@ -36,15 +38,15 @@ export function HabitCard({ habit, onEdit }: HabitCardProps) {
     const dateStr = format(date, "yyyy-MM-dd");
     return {
       dateStr,
-      label: format(date, "EEE"),
+      label: fmtPattern(date, "EEE"),
       done: habit.completions?.some((c) => c.completed_at === dateStr) ?? false,
     };
   });
 
   async function handleDelete() {
-    if (!confirm("Delete this habit?")) return;
+    if (!confirm(t("Delete this habit?"))) return;
     await deleteHabit(habit.id);
-    toast.success("Habit deleted");
+    toast.success(t("Habit deleted"));
   }
 
   return (
@@ -72,14 +74,14 @@ export function HabitCard({ habit, onEdit }: HabitCardProps) {
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
               <button
                 onClick={() => onEdit(habit)}
-                aria-label="Edit habit"
+                aria-label={t("Edit habit")}
                 className="w-7 h-7 rounded-md flex items-center justify-center text-muted-fg hover:bg-secondary hover:text-base-fg transition-all"
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={handleDelete}
-                aria-label="Delete habit"
+                aria-label={t("Delete habit")}
                 className="w-7 h-7 rounded-md flex items-center justify-center text-muted-fg hover:bg-red-50 hover:text-danger dark:hover:bg-red-900/20 transition-all"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -91,9 +93,9 @@ export function HabitCard({ habit, onEdit }: HabitCardProps) {
           <div className="flex items-center gap-4 mt-2">
             <div className="flex items-center gap-1 text-xs text-secondary-fg">
               <Flame className={cn("w-3.5 h-3.5", streak > 0 ? "text-orange-500" : "text-muted-fg")} />
-              <span>{streak} day streak</span>
+              <span>{streak === 1 ? t("{n} day streak", { n: streak }) : t("{n} days streak", { n: streak })}</span>
             </div>
-            <span className="text-xs capitalize text-muted-fg">{habit.frequency}</span>
+            <span className="text-xs capitalize text-muted-fg">{habit.frequency === "weekly" ? t("Weekly") : habit.frequency === "daily" ? t("Daily") : habit.frequency}</span>
           </div>
 
           {/* Weekly dots */}

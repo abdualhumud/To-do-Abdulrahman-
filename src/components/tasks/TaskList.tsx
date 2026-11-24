@@ -14,12 +14,14 @@ import {
 import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import { AlertCircle, CheckCircle2, Inbox } from "lucide-react";
 import { isOverdue } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface TaskListProps {
   onEditTask: (task: Task) => void;
 }
 
 export function TaskList({ onEditTask }: TaskListProps) {
+  const t = useT();
   const { getFilteredTasks, reorderTasks, filters } = useTaskStore();
   const tasks = getFilteredTasks();
 
@@ -56,19 +58,19 @@ export function TaskList({ onEditTask }: TaskListProps) {
             <div className="w-14 h-14 bg-secondary rounded-2xl flex items-center justify-center mb-4">
               <CheckCircle2 className="w-7 h-7 text-muted-fg" />
             </div>
-            <h3 className="font-semibold text-base-fg mb-1">No tasks match your filters</h3>
-            <p className="text-sm text-secondary-fg">Try adjusting your search or filters</p>
+            <h3 className="font-semibold text-base-fg mb-1">{t("No tasks match your filters")}</h3>
+            <p className="text-sm text-secondary-fg">{t("Try adjusting your search or filters")}</p>
           </>
         ) : (
           <>
             <div className="w-14 h-14 bg-accent rounded-2xl flex items-center justify-center mb-4">
               <Inbox className="w-7 h-7 text-primary" />
             </div>
-            <h3 className="font-semibold text-base-fg mb-1">No tasks yet</h3>
+            <h3 className="font-semibold text-base-fg mb-1">{t("No tasks yet")}</h3>
             <p className="text-sm text-secondary-fg">
-              Press{" "}
+              {t("Press")}{" "}
               <kbd className="bg-secondary border border-base px-1.5 py-0.5 rounded text-xs font-mono">N</kbd>{" "}
-              or click <strong>New Task</strong> to get started
+              {t("or click")} <strong>{t("New Task")}</strong> {t("to get started")}
             </p>
           </>
         )}
@@ -93,7 +95,7 @@ export function TaskList({ onEditTask }: TaskListProps) {
               <div className="flex items-center gap-2 px-1">
                 <AlertCircle className="w-3.5 h-3.5 text-danger" />
                 <span className="text-xs font-semibold text-danger uppercase tracking-wide">
-                  Overdue · {overdueTasks.length}
+                  {t("Overdue · {n}", { n: overdueTasks.length })}
                 </span>
               </div>
               {overdueTasks.map((task) => (
@@ -108,14 +110,14 @@ export function TaskList({ onEditTask }: TaskListProps) {
               {hasOverdueGroup && (
                 <div className="flex items-center gap-2 px-1">
                   <span className="text-xs font-semibold text-secondary-fg uppercase tracking-wide">
-                    All Tasks · {otherTasks.length}
+                    {t("All Tasks · {n}", { n: otherTasks.length })}
                   </span>
                 </div>
               )}
               {!hasOverdueGroup && (
                 <div className="flex items-center gap-2 px-1">
                   <span className="text-xs font-semibold text-secondary-fg uppercase tracking-wide">
-                    Tasks · {tasks.length}
+                    {t("Tasks · {n}", { n: tasks.length })}
                   </span>
                 </div>
               )}

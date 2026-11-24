@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod";
+import { tr } from "@/lib/i18n";
 import {
   CompletionSchema,
   HabitSchema,
@@ -41,14 +42,14 @@ export class SyncError extends Error {
 
 export function normalizeServer(raw: string): string {
   const trimmed = raw.trim();
-  if (!trimmed) throw new SyncError("Enter the address of your bot server, e.g. https://taskflow-bot.your-name.workers.dev");
+  if (!trimmed) throw new SyncError(tr("Enter the address of your bot server, e.g. https://taskflow-bot.your-name.workers.dev"));
   let url: URL;
   try {
     url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
   } catch {
-    throw new SyncError("That doesn't look like a web address");
+    throw new SyncError(tr("That doesn't look like a web address"));
   }
-  if (url.protocol !== "https:") throw new SyncError("The server address must start with https://");
+  if (url.protocol !== "https:") throw new SyncError(tr("The server address must start with https://"));
   return url.origin;
 }
 
@@ -62,11 +63,11 @@ async function call<T>(base: string, op: string, method: string, body?: unknown,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {
-    throw new SyncError(`Couldn't reach ${new URL(base).host}. Check the address and your connection.`);
+    throw new SyncError(tr("Couldn't reach {host}. Check the address and your connection.", { host: new URL(base).host }));
   }
   const data = (await res.json().catch(() => null)) as (T & { ok?: boolean; error?: string }) | null;
-  if (!data || typeof data !== "object") throw new SyncError("That address doesn't look like a TaskFlow server (no JSON reply).", res.status);
-  if (data.ok === false || !res.ok) throw new SyncError(data.error ?? `Server error ${res.status}`, res.status);
+  if (!data || typeof data !== "object") throw new SyncError(tr("That address doesn't look like a TaskFlow server (no JSON reply)."), res.status);
+  if (data.ok === false || !res.ok) throw new SyncError(data.error ?? tr("Server error {status}", { status: res.status }), res.status);
   return data;
 }
 
@@ -108,7 +109,7 @@ function store(base: string, secrets: { vaultId: string; token: string; key: str
 /** First device: creates the encrypted vault on the server and uploads everything. */
 export async function enableSync(rawServer: string): Promise<void> {
   await hydrateLocalStore();
-  if (localSync.get()) throw new SyncError("Sync is already on for this device.");
+  if (localSync.get()) throw new SyncError(tr("Sync is already on for this device."));
   const base = normalizeServer(rawServer);
   const secrets = newVaultSecrets();
   await call(base, "create", "POST", { vaultId: secrets.vaultId, token: secrets.token });
@@ -120,16 +121,16 @@ export async function enableSync(rawServer: string): Promise<void> {
 /** Another device: unlocks the vault secrets with the one-time code, then downloads everything. */
 export async function joinSync(rawServer: string, rawCode: string): Promise<void> {
   await hydrateLocalStore();
-  if (localSync.get()) throw new SyncError("Sync is already on for this device.");
+  if (localSync.get()) throw new SyncError(tr("Sync is already on for this device."));
   const base = normalizeServer(rawServer);
   const code = normalizeCode(rawCode);
-  if (!isCompleteCode(code)) throw new SyncError("The code has 12 letters and digits, like ABCD-EFGH-JKLM.");
+  if (!isCompleteCode(code)) throw new SyncError(tr("The code has 12 letters and digits, like ABCD-EFGH-JKLM."));
   const { wrapped } = await call<{ wrapped: string }>(base, "join", "POST", { lookup: await pairLookup(code) });
   let payload;
   try {
     payload = await unwrapFromPairing(code, wrapped);
   } catch (e) {
-    throw new SyncError(e instanceof Error ? e.message : "Wrong code");
+    throw new SyncError(e instanceof Error ? e.message : tr("Wrong code"));
   }
   store(base, payload);
   await flushLocalStore();
@@ -143,7 +144,7 @@ export async function joinSync(rawServer: string, rawCode: string): Promise<void
 /** Creates a single-use code (valid 10 minutes) that lets another device join this vault. */
 export async function createPairCode(): Promise<{ code: string; display: string; serverUrl: string }> {
   const s = localSync.get();
-  if (!s) throw new SyncError("Turn sync on first.");
+  if (!s) throw new SyncError(tr("Turn sync on first."));
   const tg = localTelegram.get();
   const code = newPairCode();
   const wrapped = await wrapForPairing(code, {
@@ -205,10 +206,10 @@ async function round(): Promise<void> {
       e instanceof DecryptError
         ? e.message
         : e instanceof SyncError && e.status === 401
-          ? "This device was removed from sync (or the vault was deleted). Turn sync off and join again."
+          ? tr("This device was removed from sync (or the vault was deleted). Turn sync off and join again.")
           : e instanceof Error
             ? e.message
-            : "Sync failed";
+            : tr("Sync failed");
     setSyncStatus({ syncing: false, error: message, current: false });
     throw e;
   }

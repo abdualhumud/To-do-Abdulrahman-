@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Play, Pause, RotateCcw, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import { useT, tr } from "@/lib/i18n";
 
 type TimerMode = "work" | "short_break" | "long_break";
 
@@ -14,6 +15,7 @@ const MODES: Record<TimerMode, { label: string; duration: number; color: string 
 };
 
 export function PomodoroTimer() {
+  const t = useT();
   const [mode, setMode] = useState<TimerMode>("work");
   const [timeLeft, setTimeLeft] = useState(MODES.work.duration);
   const [running, setRunning] = useState(false);
@@ -27,7 +29,7 @@ export function PomodoroTimer() {
     setRunning(false);
     if (mode === "work") setSessions((s) => s + 1);
     toast.success(
-      mode === "work" ? "🎉 Focus session done! Take a break." : "⚡ Break done! Back to work.",
+      mode === "work" ? tr("🎉 Focus session done! Take a break.") : tr("⚡ Break done! Back to work."),
       { duration: 5000 }
     );
   }, [mode]);
@@ -80,7 +82,7 @@ export function PomodoroTimer() {
               )}
               style={mode === key ? { background: val.color } : {}}
             >
-              {val.label}
+              {t(val.label)}
             </button>
           ))}
         </div>
@@ -105,7 +107,7 @@ export function PomodoroTimer() {
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-2xl font-bold font-mono text-base-fg">{mins}:{secs}</span>
-            <span className="text-xs text-muted-fg">{MODES[mode].label}</span>
+            <span className="text-xs text-muted-fg">{t(MODES[mode].label)}</span>
           </div>
         </div>
 
@@ -114,25 +116,25 @@ export function PomodoroTimer() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleReset}
-              aria-label="Reset timer"
+              aria-label={t("Reset timer")}
               className="w-9 h-9 rounded-lg flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
             <button
               onClick={handleToggle}
-              aria-label={running ? "Pause timer" : "Start timer"}
+              aria-label={running ? t("Pause timer") : t("Start timer")}
               className="w-12 h-12 rounded-xl text-white flex items-center justify-center transition-all hover:opacity-90 shadow-lg"
               style={{ background: MODES[mode].color }}
             >
-              {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+              {running ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ms-0.5" />}
             </button>
           </div>
 
           <div className="text-center">
             <div className="flex items-center gap-1.5 text-sm text-secondary-fg">
               <Zap className="w-4 h-4 text-warning" />
-              <span>{sessions} sessions today</span>
+              <span>{sessions === 1 ? t("{n} session today", { n: sessions }) : t("{n} sessions today", { n: sessions })}</span>
             </div>
           </div>
         </div>

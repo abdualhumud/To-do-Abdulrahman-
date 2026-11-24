@@ -6,6 +6,7 @@ import { Bell } from "lucide-react";
 import { REPEATS, REPEAT_LABELS, type Repeat } from "../../../telegram-bot/lib/recurrence";
 import type { ReminderChannel } from "@/types";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 export interface ReminderValue {
   enabled: boolean;
@@ -31,6 +32,7 @@ interface Props {
 }
 
 export function ReminderFields({ value, onChange, serverReady, syncOn, onToggle }: Props) {
+  const t = useT();
   const [now] = useState(() => Date.now());
   const inPast = value.enabled && value.repeat === "none" && value.at !== "" && new Date(value.at).getTime() < now;
   const serverChosen = value.channels.some((c) => c !== "inapp");
@@ -47,10 +49,10 @@ export function ReminderFields({ value, onChange, serverReady, syncOn, onToggle 
         role="switch"
         aria-checked={value.enabled}
         onClick={() => onToggle(!value.enabled)}
-        className="w-full flex items-center justify-between gap-3 text-left"
+        className="w-full flex items-center justify-between gap-3 text-start"
       >
         <span className="flex items-center gap-2 text-sm font-medium text-base-fg">
-          <Bell className="w-4 h-4 text-primary" /> Remind me
+          <Bell className="w-4 h-4 text-primary" /> {t("Remind me")}
         </span>
         <span className={cn("w-9 h-5 rounded-full p-0.5 transition-colors", value.enabled ? "bg-primary" : "bg-secondary")}>
           <span className={cn("block w-4 h-4 rounded-full bg-white shadow transition-transform", value.enabled && "translate-x-4")} />
@@ -61,7 +63,7 @@ export function ReminderFields({ value, onChange, serverReady, syncOn, onToggle 
         <div className="space-y-3 animate-slide-up">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-secondary-fg mb-1" htmlFor="reminder-at">When</label>
+              <label className="block text-xs font-medium text-secondary-fg mb-1" htmlFor="reminder-at">{t("When")}</label>
               <input
                 id="reminder-at"
                 type="datetime-local"
@@ -71,7 +73,7 @@ export function ReminderFields({ value, onChange, serverReady, syncOn, onToggle 
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-secondary-fg mb-1" htmlFor="reminder-repeat">Repeat</label>
+              <label className="block text-xs font-medium text-secondary-fg mb-1" htmlFor="reminder-repeat">{t("Repeat")}</label>
               <select
                 id="reminder-repeat"
                 value={value.repeat}
@@ -79,14 +81,14 @@ export function ReminderFields({ value, onChange, serverReady, syncOn, onToggle 
                 className="input-base"
               >
                 {REPEATS.map((r) => (
-                  <option key={r} value={r}>{REPEAT_LABELS[r]}</option>
+                  <option key={r} value={r}>{t(REPEAT_LABELS[r])}</option>
                 ))}
               </select>
             </div>
           </div>
 
           <div>
-            <p className="text-xs font-medium text-secondary-fg mb-1.5">Remind me by</p>
+            <p className="text-xs font-medium text-secondary-fg mb-1.5">{t("Remind me by")}</p>
             <div className="flex flex-wrap gap-1.5">
               {CHANNELS.map((c) => {
                 const disabled = c.needsServer && !serverReady;
@@ -97,7 +99,7 @@ export function ReminderFields({ value, onChange, serverReady, syncOn, onToggle 
                     type="button"
                     disabled={disabled}
                     aria-pressed={on}
-                    title={disabled ? "Connect the bot server in Settings to use this" : undefined}
+                    title={disabled ? t("Connect the bot server in Settings to use this") : undefined}
                     onClick={() => toggleChannel(c.id)}
                     className={cn(
                       "text-xs px-3 py-1.5 rounded-full border font-medium transition-all",
@@ -105,28 +107,27 @@ export function ReminderFields({ value, onChange, serverReady, syncOn, onToggle 
                       disabled && "opacity-40 cursor-not-allowed hover:border-base",
                     )}
                   >
-                    {c.label}
+                    {t(c.label)}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {inPast && <p className="text-xs text-warning">That time has already passed — pick a future time or a repeat.</p>}
+          {inPast && <p className="text-xs text-warning">{t("That time has already passed — pick a future time or a repeat.")}</p>}
           {!serverReady && (
             <p className="text-xs text-muted-fg">
-              Telegram, email and phone reminders arrive even when the app is closed. Set them up in{" "}
-              <Link href="/settings" className="text-primary hover:underline">Settings</Link>.
+              {t("Telegram, email and phone reminders arrive even when the app is closed.")}{" "}
+              <Link href="/settings" className="text-primary hover:underline">{t("Set them up in Settings")}</Link>.
             </p>
           )}
           {serverReady && serverChosen && !syncOn && (
             <p className="text-xs text-warning">
-              Turn on “Keep reminders on my server” in{" "}
-              <Link href="/settings" className="text-primary hover:underline">Settings</Link>{" "}
-              so these are sent while the app is closed.
+              {t("Turn on “Keep reminders on my server” in Settings so these are sent while the app is closed.")}{" "}
+              <Link href="/settings" className="text-primary hover:underline">{t("Settings")}</Link>
             </p>
           )}
-          {value.channels.length === 0 && <p className="text-xs text-warning">Pick at least one way to be reminded.</p>}
+          {value.channels.length === 0 && <p className="text-xs text-warning">{t("Pick at least one way to be reminded.")}</p>}
         </div>
       )}
     </div>

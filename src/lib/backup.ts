@@ -1,4 +1,5 @@
 import { todayLocal } from "@/lib/utils";
+import { tr } from "@/lib/i18n";
 import {
   CompletionSchema,
   HabitSchema,
@@ -81,7 +82,7 @@ function mergeById(
 /** Merges a backup into the current data (existing items win). Throws on a non-TaskFlow file. */
 export function importBackup(json: unknown): ImportSummary {
   if (typeof json !== "object" || json === null || (json as { app?: unknown }).app !== "taskflow") {
-    throw new Error("This file is not a TaskFlow backup");
+    throw new Error(tr("This file is not a TaskFlow backup"));
   }
   const file = json as Partial<BackupFile>;
   const skipped = { n: 0 };

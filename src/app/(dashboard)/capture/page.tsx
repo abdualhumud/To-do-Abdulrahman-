@@ -5,6 +5,23 @@ import Link from "next/link";
 import { Apple, Bookmark, Check, ClipboardList, Copy, Mic, Send, Sparkles, Zap } from "lucide-react";
 import toast from "react-hot-toast";
 import { ImportTasksModal } from "@/components/capture/ImportTasksModal";
+import { useT, tr } from "@/lib/i18n";
+
+/** Renders **bold**, __italic__ and `code` markers inside a translated string. */
+function Rich({ text }: { text: string }) {
+  const parts = text.split(/(\*\*.+?\*\*|__.+?__|`.+?`)/g);
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (p.startsWith("**") && p.endsWith("**") && p.length > 4) return <strong key={i}>{p.slice(2, -2)}</strong>;
+        if (p.startsWith("__") && p.endsWith("__") && p.length > 4) return <em key={i}>{p.slice(2, -2)}</em>;
+        if (p.startsWith("`") && p.endsWith("`") && p.length > 2)
+          return <code key={i} className="bg-secondary px-1 rounded" dir="auto">{p.slice(1, -1)}</code>;
+        return <span key={i}>{p}</span>;
+      })}
+    </>
+  );
+}
 
 const noopSubscribe = () => () => {};
 
@@ -18,6 +35,7 @@ function useAppBase(): string {
 }
 
 function CopyBlock({ label, value }: { label: string; value: string }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
 
   async function copy() {
@@ -26,7 +44,7 @@ function CopyBlock({ label, value }: { label: string; value: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.error("Couldn't copy — select the text and copy it manually");
+      toast.error(t("Couldn't copy — select the text and copy it manually"));
     }
   }
 
@@ -37,7 +55,7 @@ function CopyBlock({ label, value }: { label: string; value: string }) {
         <code className="flex-1 min-w-0 bg-secondary rounded-lg px-3 py-2 text-xs text-base-fg break-all select-all" dir="ltr">
           {value || "…"}
         </code>
-        <button onClick={copy} disabled={!value} className="btn-secondary px-3" aria-label={`Copy ${label}`}>
+        <button onClick={copy} disabled={!value} className="btn-secondary px-3" aria-label={t("Copy {label}", { label })}>
           {copied ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
         </button>
       </div>
@@ -61,7 +79,7 @@ function Section({ icon: Icon, title, children }: { icon: typeof Zap; title: str
 
 function Steps({ items }: { items: React.ReactNode[] }) {
   return (
-    <ol className="space-y-2 text-sm text-secondary-fg list-decimal pl-5">
+    <ol className="space-y-2 text-sm text-secondary-fg list-decimal ps-5">
       {items.map((item, i) => (
         <li key={i}>{item}</li>
       ))}
@@ -70,11 +88,12 @@ function Steps({ items }: { items: React.ReactNode[] }) {
 }
 
 export default function CapturePage() {
+  const t = useT();
   const base = useAppBase();
   const [showImport, setShowImport] = useState(false);
   const captureLink = base ? `${base}dashboard/?add=` : "";
   const bookmarklet = base
-    ? `javascript:(()=>{const t=prompt("Add to TaskFlow");if(t)window.open("${base}dashboard/?add="+encodeURIComponent(t))})()`
+    ? `javascript:(()=>{const t=prompt("${tr("Add to TaskFlow")}");if(t)window.open("${base}dashboard/?add="+encodeURIComponent(t))})()`
     : "";
   const sampleLink = base ? `${base}dashboard/?add=${encodeURIComponent("Try TaskFlow capture tomorrow #personal !low")}` : "#";
 
@@ -85,83 +104,81 @@ export default function CapturePage() {
           <Zap className="w-5 h-5 text-secondary-fg" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-base-fg">Add tasks from anywhere</h1>
-          <p className="text-sm text-secondary-fg">Capture from your phone, notes, voice or chat — it all lands in your list.</p>
+          <h1 className="text-xl font-bold text-base-fg">{t("Add tasks from anywhere")}</h1>
+          <p className="text-sm text-secondary-fg">{t("Capture from your phone, notes, voice or chat — it all lands in your list.")}</p>
         </div>
       </div>
 
-      <Section icon={Sparkles} title="Your capture link">
-        <CopyBlock label="Add this to any link, shortcut or bookmark" value={captureLink} />
+      <Section icon={Sparkles} title={t("Your capture link")}>
+        <CopyBlock label={t("Add this to any link, shortcut or bookmark")} value={captureLink} />
         <p className="text-sm text-secondary-fg">
-          Put the task text right after <code className="bg-secondary px-1 rounded">?add=</code>. Several lines make several tasks.
-          Extras: <code className="bg-secondary px-1 rounded">&amp;priority=high</code>{" "}
+          <Rich text={t("Put the task text right after `?add=`. Several lines make several tasks.")} />{" "}
+          {t("Extras:")} <code className="bg-secondary px-1 rounded">&amp;priority=high</code>{" "}
           <code className="bg-secondary px-1 rounded">&amp;due=tomorrow</code>{" "}
           <code className="bg-secondary px-1 rounded">&amp;category=work</code>{" "}
           <code className="bg-secondary px-1 rounded">&amp;notes=…</code>
         </p>
-        <a href={sampleLink} className="btn-secondary inline-flex text-xs">Try it with a sample task</a>
+        <a href={sampleLink} className="btn-secondary inline-flex text-xs">{t("Try it with a sample task")}</a>
       </Section>
 
-      <Section icon={Apple} title="Apple Shortcuts — iPhone, iPad, Mac">
+      <Section icon={Apple} title={t("Apple Shortcuts — iPhone, iPad, Mac")}>
         <Steps
           items={[
-            <>Open <strong>Shortcuts</strong> → <strong>+</strong> and name it “Add to TaskFlow”.</>,
-            <>Add <strong>Ask for Input</strong> (type Text). For voice, use <strong>Dictate Text</strong> instead — Arabic works too.</>,
-            <>Add a <strong>Text</strong> action: paste the capture link above, then insert the <strong>Provided Input</strong> variable right after it.</>,
-            <>Add <strong>Open URLs</strong> and pass it that Text. If spaces or Arabic letters don&apos;t come through, run the Text through <strong>URL Encode</strong> first.</>,
-            <>Open the shortcut&apos;s settings and turn on <strong>Show in Share Sheet</strong> to send selected text from Notes, Safari or Messages straight to TaskFlow.</>,
-            <>Say <strong>“Hey Siri, Add to TaskFlow”</strong>, add it to your Home Screen, or map it to the Action Button / Back Tap.</>,
+            <Rich key={126} text={t("Open **Shortcuts** → **+** and name it “Add to TaskFlow”.")} />,
+            <Rich key={127} text={t("Add **Ask for Input** (type Text). For voice, use **Dictate Text** instead — Arabic works too.")} />,
+            <Rich key={128} text={t("Add a **Text** action: paste the capture link above, then insert the **Provided Input** variable right after it.")} />,
+            <Rich key={129} text={t("Add **Open URLs** and pass it that Text. If spaces or Arabic letters don't come through, run the Text through **URL Encode** first.")} />,
+            <Rich key={130} text={t("Open the shortcut's settings and turn on **Show in Share Sheet** to send selected text from Notes, Safari or Messages straight to TaskFlow.")} />,
+            <Rich key={131} text={t("Say **“Hey Siri, Add to TaskFlow”**, add it to your Home Screen, or map it to the Action Button / Back Tap.")} />,
           ]}
         />
         <p className="text-xs leading-relaxed rounded-lg border border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300 p-3">
-          Heads-up: Shortcuts opens the link in Safari. On iPhone a site added to the Home Screen <em>as an app</em> keeps
-          separate storage from Safari, so use TaskFlow in Safari (or add it to the Home Screen with “Open as Web App” off).
+          <Rich text={t("Heads-up: Shortcuts opens the link in Safari. On iPhone a site added to the Home Screen __as an app__ keeps separate storage from Safari, so use TaskFlow in Safari (or add it to the Home Screen with “Open as Web App” off).")} />
         </p>
       </Section>
 
-      <Section icon={ClipboardList} title="Apple Notes (and Reminders)">
+      <Section icon={ClipboardList} title={t("Apple Notes (and Reminders)")}>
         <Steps
           items={[
-            <>In Notes, select your checklist or bullet list and tap <strong>Copy</strong>.</>,
-            <>Come back here (or the Dashboard) and press <strong>Import</strong> — or just paste into Quick Add.</>,
-            <>Review the preview and tap <strong>Add</strong>. Bullets, numbers and checkboxes are cleaned up; items already checked off are skipped.</>,
+            <Rich key={142} text={t("In Notes, select your checklist or bullet list and tap **Copy**.")} />,
+            <Rich key={143} text={t("Come back here (or the Dashboard) and press **Import** — or just paste into Quick Add.")} />,
+            <Rich key={144} text={t("Review the preview and tap **Add**. Bullets, numbers and checkboxes are cleaned up; items already checked off are skipped.")} />,
           ]}
         />
         <button onClick={() => setShowImport(true)} className="btn-primary text-sm">
-          <ClipboardList className="w-4 h-4" /> Paste a list now
+          <ClipboardList className="w-4 h-4" /> {t("Paste a list now")}
         </button>
         <p className="text-sm text-secondary-fg">
-          Want it automatic? In Shortcuts use <strong>Find Notes</strong> → <strong>Get Details of Notes</strong> (Body) and pass the
-          result to the same <strong>Text → Open URLs</strong> steps above — each line becomes a task.
+          <Rich text={t("Want it automatic? In Shortcuts use **Find Notes** → **Get Details of Notes** (Body) and pass the result to the same **Text → Open URLs** steps above — each line becomes a task.")} />
         </p>
       </Section>
 
-      <Section icon={Send} title="Telegram">
+      <Section icon={Send} title={t("Telegram")}>
         <p className="text-sm text-secondary-fg">
-          Message your own bot from any device and the text becomes a task. Set it up once in{" "}
-          <Link href="/settings" className="text-primary font-medium hover:underline">Settings → Telegram</Link>.
+          {t("Message your own bot from any device and the text becomes a task. Set it up once in")}{" "}
+          <Link href="/settings" className="text-primary font-medium hover:underline">{t("Settings → Telegram")}</Link>.
         </p>
       </Section>
 
-      <Section icon={Bookmark} title="Browser bookmarklet (desktop)">
+      <Section icon={Bookmark} title={t("Browser bookmarklet (desktop)")}>
         <Steps
           items={[
-            <>Create a new bookmark in your browser (any page).</>,
-            <>Edit it: name “Add to TaskFlow”, and paste the code below as the URL.</>,
-            <>Click it on any page, type the task, and TaskFlow opens with it added.</>,
+            t("Create a new bookmark in your browser (any page)."),
+            t("Edit it: name “Add to TaskFlow”, and paste the code below as the URL."),
+            t("Click it on any page, type the task, and TaskFlow opens with it added."),
           ]}
         />
-        <CopyBlock label="Bookmarklet" value={bookmarklet} />
+        <CopyBlock label={t("Bookmarklet")} value={bookmarklet} />
       </Section>
 
-      <Section icon={Mic} title="What you can write">
+      <Section icon={Mic} title={t("What you can write")}>
         <ul className="text-sm text-secondary-fg space-y-1.5">
-          <li><strong>Dates:</strong> today, tomorrow, Friday, next week, in 3 days, 2026-12-31 — or اليوم، بكرة، بعد غد، الخميس، الأسبوع القادم</li>
-          <li><strong>Priority:</strong> <code className="bg-secondary px-1 rounded">!urgent</code> <code className="bg-secondary px-1 rounded">!high</code> <code className="bg-secondary px-1 rounded">!low</code> — or <code className="bg-secondary px-1 rounded" dir="rtl">!عاجل !مهم</code></li>
-          <li><strong>Time (makes a reminder):</strong> at 5pm, 17:30, 9 am — or الساعة 5 مساء، الساعة 8 صباحا</li>
-          <li><strong>Repeat:</strong> every day, weekly, monthly, weekdays, every monday — or كل يوم، أسبوعيا، شهريا، كل يوم خميس</li>
-          <li><strong>Category:</strong> <code className="bg-secondary px-1 rounded">#work</code> <code className="bg-secondary px-1 rounded">#health</code> … or <code className="bg-secondary px-1 rounded" dir="rtl">#عمل #صحة #شخصي</code></li>
-          <li><strong>Examples:</strong> <span dir="auto">Pay the invoice Thursday !high #finance</span> · <span dir="auto">اتصل بأمي غدا الساعة 5 مساء</span> · <span dir="auto">Take pills every day at 8am</span></li>
+          <li><Rich text={t("**Dates:** today, tomorrow, Friday, next week, in 3 days, 2026-12-31 — or اليوم، بكرة، بعد غد، الخميس، الأسبوع القادم")} /></li>
+          <li><Rich text={t("**Priority:** `!urgent` `!high` `!low` — or `!عاجل !مهم`")} /></li>
+          <li><Rich text={t("**Time (makes a reminder):** at 5pm, 17:30, 9 am — or الساعة 5 مساء، الساعة 8 صباحا")} /></li>
+          <li><Rich text={t("**Repeat:** every day, weekly, monthly, weekdays, every monday — or كل يوم، أسبوعيا، شهريا، كل يوم خميس")} /></li>
+          <li><Rich text={t("**Category:** `#work` `#health` … or `#عمل #صحة #شخصي`")} /></li>
+          <li><strong>{t("Examples:")}</strong> <span dir="auto">Pay the invoice Thursday !high #finance</span> · <span dir="auto">اتصل بأمي غدا الساعة 5 مساء</span> · <span dir="auto">Take pills every day at 8am</span></li>
         </ul>
       </Section>
 

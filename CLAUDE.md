@@ -220,6 +220,18 @@ Opt-in (Settings → Sync across devices). Needs the bot server (Worker/Vercel);
   await `flushLocalStore()` after saving credentials; e2e `getByText("Up to date")` matches other cards — scope to `#sync`.
 - Tests: `tests/unit/sync-{core,server,converge}.test.ts`, `tests/e2e/sync.e2e.js` (two browser profiles, both bot hosts).
 
+## Arabic / RTL and iPhone (`src/lib/i18n.ts`)
+- UI strings are written in English and wrapped: `useT()` → `t("English")` in components, `tr("English")` in lib code; Arabic is in
+  `src/lib/i18n/ar/*.ts` keyed by the exact English string. `tests/unit/i18n.test.ts` fails CI if a wrapped literal has no Arabic
+  entry (labels in constants are called as `t(label)` and must be added to the dictionary by hand). Language = `tf_lang` in
+  plain localStorage; an inline script in `layout.tsx` sets `lang`/`dir` before paint; Header toggle + Settings → Language.
+- Use logical Tailwind classes only (`ms-/me-/ps-/pe-/start-/end-/text-start/border-s/border-e`), never `ml-/pl-/left-/text-left`.
+  Centering with `left-1/2 -translate-x-1/2` must stay physical. Dates via `fmtDate/fmtDateTime/fmtTime/fmtPattern` (Gregorian, Latin digits).
+- iPhone: `viewportFit: cover` + `env(safe-area-inset-*)` (header top, bottom nav, main padding), `100dvh`, 16px inputs on phones
+  (else iOS zooms), 44px touch targets (`pointer: coarse`), modals are bottom sheets under `sm`, FAB on the dashboard,
+  web manifest + apple-touch-icon so "Add to Home Screen" opens full screen. Check with a 390px iPhone-UA screenshot in both languages.
+- Not translated: Telegram bot replies (server side) and server-provided error text.
+
 ## Backup
 
 Settings → Export/Import (`src/lib/backup.ts`): JSON with tasks/tags/habits/completions

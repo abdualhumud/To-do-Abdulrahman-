@@ -1,4 +1,5 @@
 import { type ClassValue, clsx } from "clsx";
+import { fmtDate } from "@/lib/i18n";
 import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
@@ -22,7 +23,7 @@ export function parseDate(date: Date | string): Date {
 
 export function formatDate(date: Date | string | null | undefined): string {
   if (!date) return "";
-  return parseDate(date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return fmtDate(parseDate(date), { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function isOverdue(dueDate: string | null | undefined): boolean {

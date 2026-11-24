@@ -8,6 +8,7 @@ import { processCaptureRequest } from "@/lib/capture";
 import { isLinked, pollTelegram } from "@/lib/telegram";
 import { refreshStores } from "@/lib/refresh";
 import { startSyncRuntime } from "@/lib/sync";
+import { tr } from "@/lib/i18n";
 import { ReminderRuntime } from "@/components/providers/ReminderRuntime";
 
 const PAIRING_POLL_MS = 4_000;
@@ -25,10 +26,10 @@ export function AppBootstrap() {
   useEffect(() => {
     processCaptureRequest()
       .then((titles) => {
-        if (titles.length === 1) toast.success(`Added: ${titles[0]}`);
-        else if (titles.length > 1) toast.success(`Added ${titles.length} tasks`);
+        if (titles.length === 1) toast.success(tr("Added: {title}", { title: titles[0] }));
+        else if (titles.length > 1) toast.success(tr("Added {n} tasks", { n: titles.length }));
       })
-      .catch(() => toast.error("Couldn't add the task from that link"));
+      .catch(() => toast.error(tr("Couldn't add the task from that link")));
   }, []);
 
   return (
@@ -51,8 +52,8 @@ function TelegramSync() {
       if (document.visibilityState !== "visible") return;
       pollTelegram()
         .then(({ added, linked }) => {
-          if (linked) toast.success("Telegram linked");
-          if (added.length > 0) toast.success(`Telegram: added ${added.length} task${added.length === 1 ? "" : "s"}`);
+          if (linked) toast.success(tr("Telegram linked"));
+          if (added.length > 0) toast.success(added.length === 1 ? tr("Telegram: added 1 task") : tr("Telegram: added {n} tasks", { n: added.length }));
         })
         .catch(() => undefined);
     };

@@ -11,8 +11,14 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { useT, fmtDateTime } from "@/lib/i18n";
 import { CalendarSheet } from "@/components/tasks/CalendarSheet";
 import { REPEAT_LABELS } from "../../../telegram-bot/lib/recurrence";
+
+const CATEGORY_LABELS: Record<string, string> = {
+  work: "Work", personal: "Personal", health: "Health", learning: "Learning",
+  finance: "Finance", social: "Social", other: "Other",
+};
 
 const PRIORITY_CONFIG = {
   urgent: { label: "Urgent", color: "text-danger",     bg: "rgba(239,68,68,0.1)",   dot: "bg-red-500",    border: "rgb(var(--danger))" },
@@ -32,6 +38,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, onEdit }: TaskCardProps) {
+  const t = useT();
   const { toggleTask, deleteTask, createSubTask, toggleSubTask, deleteSubTask } = useTaskStore();
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [newSubtask, setNewSubtask] = useState("");
@@ -64,9 +71,9 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
   }
 
   async function handleDelete() {
-    if (!confirm("Delete this task?")) return;
+    if (!confirm(t("Delete this task?"))) return;
     await deleteTask(task.id);
-    toast.success("Task deleted");
+    toast.success(t("Task deleted"));
   }
 
   return (
@@ -85,7 +92,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
         <button
           {...attributes}
           {...listeners}
-          aria-label="Drag to reorder"
+          aria-label={t("Drag to reorder")}
           className="mt-0.5 text-muted-fg hover:text-secondary-fg cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex-shrink-0 touch-none"
           tabIndex={-1}
         >
@@ -95,13 +102,13 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
         {/* Checkbox */}
         <button
           onClick={() => toggleTask(task.id)}
-          aria-label={isCompleted ? "Mark as not done" : "Mark as done"}
+          aria-label={isCompleted ? t("Mark as not done") : t("Mark as done")}
           className={cn(
-            "mt-0.5 flex-shrink-0 transition-all duration-200",
+            "-m-2 p-2 flex-shrink-0 transition-all duration-200",
             isCompleted ? "text-success scale-110" : "text-muted-fg hover:text-primary hover:scale-110"
           )}
         >
-          {isCompleted ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+          {isCompleted ? <CheckSquare className="w-6 h-6 md:w-5 md:h-5" /> : <Square className="w-6 h-6 md:w-5 md:h-5" />}
         </button>
 
         {/* Content */}
@@ -125,22 +132,22 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex-shrink-0">
               <button
                 onClick={() => setShowCalendar(true)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-accent hover:text-primary transition-all"
-                title="Add to calendar" aria-label="Add to calendar"
+                className="w-10 h-10 md:w-7 md:h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-accent hover:text-primary transition-all"
+                title={t("Add to calendar")} aria-label={t("Add to calendar")}
               >
                 <CalendarPlus className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => onEdit(task)}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-accent hover:text-primary transition-all"
-                title="Edit" aria-label="Edit task"
+                className="w-10 h-10 md:w-7 md:h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-accent hover:text-primary transition-all"
+                title={t("Edit")} aria-label={t("Edit task")}
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={handleDelete}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-red-50 hover:text-danger dark:hover:bg-red-900/20 transition-all"
-                title="Delete" aria-label="Delete task"
+                className="w-10 h-10 md:w-7 md:h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-red-50 hover:text-danger dark:hover:bg-red-900/20 transition-all"
+                title={t("Delete")} aria-label={t("Delete task")}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -155,12 +162,12 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
               style={{ background: priorityConf.bg }}
             >
               <span className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", priorityConf.dot)} />
-              {priorityConf.label}
+              {t(priorityConf.label)}
             </span>
 
             {/* Category */}
             <span className="text-xs text-secondary-fg bg-secondary px-1.5 py-0.5 rounded-md capitalize">
-              {task.category}
+              {t(CATEGORY_LABELS[task.category] ?? task.category)}
             </span>
 
             {/* Tags */}
@@ -183,18 +190,18 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                            "text-muted-fg"
               )}>
                 <Calendar className="w-3 h-3" />
-                {overdue ? "Overdue · " : dueToday ? "Today · " : ""}
+                {overdue ? t("Overdue") + " · " : dueToday ? t("Today") + " · " : ""}
                 {formatDate(task.due_date)}
               </span>
             )}
 
             {/* Reminder */}
             {task.reminder_at && !isCompleted && (
-              <span className="inline-flex items-center gap-1 text-xs text-secondary-fg px-1.5 py-0.5 rounded-md bg-secondary" title="Reminder">
+              <span className="inline-flex items-center gap-1 text-xs text-secondary-fg px-1.5 py-0.5 rounded-md bg-secondary" title={t("Reminder")}>
                 <Bell className="w-3 h-3" />
-                {new Date(task.reminder_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                {fmtDateTime(new Date(task.reminder_at), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                 {task.repeat && task.repeat !== "none" && (
-                  <span className="inline-flex items-center gap-0.5" title={REPEAT_LABELS[task.repeat]}>
+                  <span className="inline-flex items-center gap-0.5" title={t(REPEAT_LABELS[task.repeat])}>
                     <RepeatIcon className="w-3 h-3" />
                   </span>
                 )}
@@ -207,7 +214,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                 onClick={() => setShowSubtasks(!showSubtasks)}
                 className="inline-flex items-center gap-1 text-xs text-secondary-fg hover:text-primary transition-colors"
               >
-                <span className="font-medium">{completedSubtasks}/{subtaskCount}</span> subtasks
+                <span className="font-medium">{completedSubtasks}/{subtaskCount}</span> {t("subtasks")}
                 {showSubtasks ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
               </button>
             )}
@@ -218,7 +225,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                 onClick={() => setAddingSubtask(true)}
                 className="inline-flex items-center gap-1 text-xs text-muted-fg hover:text-primary transition-opacity opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
               >
-                <Plus className="w-3 h-3" /> Subtask
+                <Plus className="w-3 h-3" /> {t("Subtask")}
               </button>
             )}
           </div>
@@ -240,12 +247,12 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
 
           {/* Subtask list */}
           {showSubtasks && subtaskCount > 0 && (
-            <div className="mt-3 space-y-1.5 pl-2 border-l-2 border-base animate-slide-up">
+            <div className="mt-3 space-y-1.5 ps-2 border-l-2 border-base animate-slide-up">
               {task.subtasks?.map((sub) => (
                 <div key={sub.id} className="flex items-center gap-2 group/sub">
                   <button
                     onClick={() => toggleSubTask(sub.id, task.id, !sub.completed)}
-                    aria-label={`Mark "${sub.title}" as ${sub.completed ? "not done" : "done"}`}
+                    aria-label={sub.completed ? t('Mark "{title}" as not done', { title: sub.title }) : t('Mark "{title}" as done', { title: sub.title })}
                     className={cn(
                       "flex-shrink-0 transition-colors",
                       sub.completed ? "text-success" : "text-muted-fg hover:text-primary"
@@ -258,7 +265,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                   </span>
                   <button
                     onClick={() => deleteSubTask(sub.id, task.id)}
-                    aria-label="Delete subtask"
+                    aria-label={t("Delete subtask")}
                     className="opacity-0 group-hover/sub:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 text-muted-fg hover:text-danger transition-all"
                   >
                     <Trash2 className="w-3 h-3" />
@@ -281,11 +288,11 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                     if (e.key === "Escape") setAddingSubtask(false);
                   }}
                   className="input-base h-7 py-0 text-xs flex-1"
-                  placeholder="Subtask name..."
+                  placeholder={t("Subtask name...")}
                   autoFocus
                 />
-                <button onClick={handleAddSubtask} className="text-xs font-medium text-primary hover:underline">Add</button>
-                <button onClick={() => setAddingSubtask(false)} className="text-xs text-muted-fg hover:underline">Cancel</button>
+                <button onClick={handleAddSubtask} className="text-xs font-medium text-primary hover:underline">{t("Add")}</button>
+                <button onClick={() => setAddingSubtask(false)} className="text-xs text-muted-fg hover:underline">{t("Cancel")}</button>
               </div>
             ) : null}
           </div>

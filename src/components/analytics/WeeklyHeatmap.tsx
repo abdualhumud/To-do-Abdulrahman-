@@ -4,8 +4,10 @@ import { useTaskStore } from "@/store/useTaskStore";
 import { useMemo } from "react";
 import { format, subDays, startOfWeek, addDays, eachDayOfInterval } from "date-fns";
 import { cn } from "@/lib/utils";
+import { useT, fmtPattern } from "@/lib/i18n";
 
 export function WeeklyHeatmap() {
+  const t = useT();
   const { tasks } = useTaskStore();
 
   const weeks = useMemo(() => {
@@ -44,9 +46,9 @@ export function WeeklyHeatmap() {
   return (
     <div className="space-y-3">
       {/* Week labels */}
-      <div className="flex gap-2 justify-end text-xs text-muted-fg pr-1">
+      <div className="flex gap-2 justify-end text-xs text-muted-fg pe-1">
         {["4 weeks ago", "3 weeks ago", "2 weeks ago", "This week"].map((w) => (
-          <div key={w} className="flex-1 text-center hidden sm:block">{w}</div>
+          <div key={w} className="flex-1 text-center hidden sm:block">{t(w)}</div>
         ))}
       </div>
 
@@ -54,7 +56,7 @@ export function WeeklyHeatmap() {
         {/* Day labels */}
         <div className="flex flex-col gap-1.5 sm:gap-2 pt-0.5">
           {dayLabels.map((d) => (
-            <div key={d} className="h-8 flex items-center text-xs text-muted-fg w-8">{d}</div>
+            <div key={d} className="h-8 flex items-center text-xs text-muted-fg w-8">{t(d)}</div>
           ))}
         </div>
 
@@ -65,7 +67,7 @@ export function WeeklyHeatmap() {
               {week.map((day, di) => (
                 <div
                   key={di}
-                  title={`${format(day.date, "MMM d")}: ${day.count} tasks completed`}
+                  title={day.count === 1 ? t("{date}: {n} task completed", { date: fmtPattern(day.date, "MMM d"), n: day.count }) : t("{date}: {n} tasks completed", { date: fmtPattern(day.date, "MMM d"), n: day.count })}
                   className={cn("h-8 rounded-md bg-primary transition-opacity cursor-default", getIntensity(day.count))}
                 />
               ))}
@@ -76,11 +78,11 @@ export function WeeklyHeatmap() {
 
       {/* Legend */}
       <div className="flex items-center gap-2 justify-end text-xs text-muted-fg">
-        <span>Less</span>
+        <span>{t("Less")}</span>
         {["opacity-10", "opacity-30", "opacity-50", "opacity-75", "opacity-100"].map((op) => (
           <div key={op} className={cn("w-4 h-4 rounded-sm bg-primary", op)} />
         ))}
-        <span>More</span>
+        <span>{t("More")}</span>
       </div>
     </div>
   );

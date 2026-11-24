@@ -7,8 +7,10 @@ import { HabitCard } from "@/components/habits/HabitCard";
 import { HabitModal } from "@/components/habits/HabitModal";
 import { Flame, Plus } from "lucide-react";
 import { Habit } from "@/types";
+import { useT } from "@/lib/i18n";
 
 export default function HabitsPage() {
+  const t = useT();
   const { habits, fetchHabits } = useHabitStore();
   const [showModal, setShowModal] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
@@ -31,14 +33,14 @@ export default function HabitsPage() {
             <Flame className="w-5 h-5 text-orange-500" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-base-fg">Habits</h1>
+            <h1 className="text-xl font-bold text-base-fg">{t("Habits")}</h1>
             <p className="text-sm text-secondary-fg">
-              {completedToday} / {habits.length} done today
+              {t("{done} / {total} done today", { done: completedToday, total: habits.length })}
             </p>
           </div>
         </div>
         <button onClick={() => setShowModal(true)} className="btn-primary">
-          <Plus className="w-4 h-4" /> New Habit
+          <Plus className="w-4 h-4" /> {t("New Habit")}
         </button>
       </div>
 
@@ -46,7 +48,7 @@ export default function HabitsPage() {
       {habits.length > 0 && (
         <div className="card p-4">
           <div className="flex items-center justify-between text-sm mb-2">
-            <span className="font-medium text-base-fg">Today&apos;s Progress</span>
+            <span className="font-medium text-base-fg">{t("Today's Progress")}</span>
             <span className="text-secondary-fg">{Math.round((completedToday / habits.length) * 100)}%</span>
           </div>
           <div className="h-2.5 bg-secondary rounded-full overflow-hidden">
@@ -64,10 +66,10 @@ export default function HabitsPage() {
           <div className="w-16 h-16 bg-orange-100 dark:bg-orange-900/20 rounded-2xl flex items-center justify-center mb-4 text-3xl">
             🔥
           </div>
-          <h3 className="font-semibold text-base-fg mb-1">No habits yet</h3>
-          <p className="text-secondary-fg text-sm mb-4">Start building powerful daily routines</p>
+          <h3 className="font-semibold text-base-fg mb-1">{t("No habits yet")}</h3>
+          <p className="text-secondary-fg text-sm mb-4">{t("Start building powerful daily routines")}</p>
           <button onClick={() => setShowModal(true)} className="btn-primary">
-            <Plus className="w-4 h-4" /> Create your first habit
+            <Plus className="w-4 h-4" /> {t("Create your first habit")}
           </button>
         </div>
       ) : (

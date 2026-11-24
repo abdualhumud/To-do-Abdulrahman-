@@ -2,6 +2,7 @@
 
 /** Phone/desktop push notifications: this device subscribes and the bot server sends to it. */
 
+import { tr } from "@/lib/i18n";
 import { localPrefs } from "@/lib/local-store";
 import { appDashboardUrl, authHeader, serverConfig } from "@/lib/reminders";
 import { server, type ServerStatus } from "@/lib/telegram";
@@ -13,8 +14,8 @@ export function pushSupport(): { supported: boolean; reason?: string } {
   return {
     supported: false,
     reason: ios
-      ? "On iPhone, push notifications only work for a web app added to the Home Screen: Share → Add to Home Screen, then open TaskFlow from there (it keeps its own data, so connect the bot server there too). Telegram reminders work everywhere."
-      : "This browser doesn't support push notifications. Telegram reminders work everywhere.",
+      ? tr("On iPhone, push notifications only work for a web app added to the Home Screen: Share → Add to Home Screen, then open TaskFlow from there (it keeps its own data, so connect the bot server there too). Telegram reminders work everywhere.")
+      : tr("This browser doesn't support push notifications. Telegram reminders work everywhere."),
   };
 }
 
@@ -39,13 +40,13 @@ async function registration(): Promise<ServiceWorkerRegistration> {
 
 export async function enablePush(): Promise<void> {
   const cfg = serverConfig();
-  if (!cfg) throw new Error("Connect the bot server first (Settings → Telegram)");
+  if (!cfg) throw new Error(tr("Connect the bot server first (Settings → Telegram)"));
   const support = pushSupport();
   if (!support.supported) throw new Error(support.reason);
-  if ((await Notification.requestPermission()) !== "granted") throw new Error("Notifications are blocked for this site — allow them in the browser settings");
+  if ((await Notification.requestPermission()) !== "granted") throw new Error(tr("Notifications are blocked for this site — allow them in the browser settings"));
 
   const status = await server<ServerStatus>(cfg.serverUrl, "/api/status");
-  if (!status.vapidPublicKey) throw new Error("The server has no push keys yet — check Redis in Check connection");
+  if (!status.vapidPublicKey) throw new Error(tr("The server has no push keys yet — check Redis in Check connection"));
 
   const reg = await registration();
   await (await reg.pushManager.getSubscription())?.unsubscribe(); // a stale key would make subscribe() fail

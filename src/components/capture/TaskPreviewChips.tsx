@@ -4,8 +4,16 @@ import { Bell, Calendar, Flag, Folder } from "lucide-react";
 import { REPEAT_LABELS } from "../../../telegram-bot/lib/recurrence";
 import type { ParsedTask } from "@/lib/task-parser";
 import { formatDate } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
+
+const PRIORITY_LABELS: Record<string, string> = { low: "Low", medium: "Medium", high: "High", urgent: "Urgent" };
+const CATEGORY_LABELS: Record<string, string> = {
+  work: "Work", personal: "Personal", health: "Health", learning: "Learning",
+  finance: "Finance", social: "Social", other: "Other",
+};
 
 export function TaskPreviewChips({ task }: { task: ParsedTask }) {
+  const t = useT();
   if (!task.due_date && !task.priority && !task.category && !task.time && !task.repeat) return null;
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
@@ -19,19 +27,19 @@ export function TaskPreviewChips({ task }: { task: ParsedTask }) {
         <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md bg-accent text-accent-fg">
           <Bell className="w-3 h-3" />
           {task.time ?? "09:00"}
-          {task.repeat && ` · ${REPEAT_LABELS[task.repeat]}`}
+          {task.repeat && ` · ${t(REPEAT_LABELS[task.repeat])}`}
         </span>
       )}
       {task.priority && (
         <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md bg-secondary text-secondary-fg capitalize">
           <Flag className="w-3 h-3" />
-          {task.priority}
+          {t(PRIORITY_LABELS[task.priority] ?? task.priority)}
         </span>
       )}
       {task.category && (
         <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md bg-secondary text-secondary-fg capitalize">
           <Folder className="w-3 h-3" />
-          {task.category}
+          {t(CATEGORY_LABELS[task.category] ?? task.category)}
         </span>
       )}
     </span>

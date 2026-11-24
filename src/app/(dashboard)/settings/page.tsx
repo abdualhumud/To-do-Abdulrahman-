@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { localUser } from "@/lib/local-store";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { LanguageCard } from "@/components/settings/LanguageCard";
 import { SyncCard } from "@/components/settings/SyncCard";
 import { TelegramCard } from "@/components/settings/TelegramCard";
 import { BackupCard } from "@/components/settings/BackupCard";
@@ -10,8 +11,10 @@ import { RemindersCard } from "@/components/settings/RemindersCard";
 import { Settings, Sun, Moon, Monitor, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import { useT } from "@/lib/i18n";
 
 export default function SettingsPage() {
+  const t = useT();
   const { theme, setTheme } = useTheme();
   const [name, setName] = useState(() => localUser.get()?.name ?? "");
   const [email, setEmail] = useState(() => localUser.get()?.email ?? "");
@@ -21,7 +24,7 @@ export default function SettingsPage() {
     const u = localUser.get();
     if (!u) return;
     localUser.set({ ...u, name: name.trim(), email: email.trim() });
-    toast.success("Profile saved!");
+    toast.success(t("Profile saved!"));
   }
 
   const themeOptions = [
@@ -37,8 +40,8 @@ export default function SettingsPage() {
           <Settings className="w-5 h-5 text-secondary-fg" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-base-fg">Settings</h1>
-          <p className="text-sm text-secondary-fg">Manage your profile and preferences</p>
+          <h1 className="text-xl font-bold text-base-fg">{t("Settings")}</h1>
+          <p className="text-sm text-secondary-fg">{t("Manage your profile and preferences")}</p>
         </div>
       </div>
 
@@ -46,25 +49,25 @@ export default function SettingsPage() {
       <div className="card p-5 space-y-4">
         <div className="flex items-center gap-2 mb-2">
           <User className="w-4 h-4 text-secondary-fg" />
-          <h2 className="font-semibold text-base-fg">Profile</h2>
+          <h2 className="font-semibold text-base-fg">{t("Profile")}</h2>
         </div>
 
         <form onSubmit={handleSaveProfile} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-base-fg mb-1.5">Full Name</label>
+            <label className="block text-sm font-medium text-base-fg mb-1.5">{t("Full Name")}</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="input-base"
-              placeholder="Your name"
+              placeholder={t("Your name")}
               required
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-base-fg mb-1.5">
-              Email <span className="text-muted-fg font-normal">(optional)</span>
+              {t("Email")} <span className="text-muted-fg font-normal">({t("optional")})</span>
             </label>
             <input
               type="email"
@@ -76,7 +79,7 @@ export default function SettingsPage() {
           </div>
 
           <button type="submit" className="btn-primary">
-            Save Profile
+            {t("Save Profile")}
           </button>
         </form>
       </div>
@@ -85,7 +88,7 @@ export default function SettingsPage() {
       <div className="card p-5">
         <div className="flex items-center gap-2 mb-4">
           <Sun className="w-4 h-4 text-secondary-fg" />
-          <h2 className="font-semibold text-base-fg">Appearance</h2>
+          <h2 className="font-semibold text-base-fg">{t("Appearance")}</h2>
         </div>
 
         <div className="grid grid-cols-3 gap-2">
@@ -102,7 +105,7 @@ export default function SettingsPage() {
               >
                 <Icon className={cn("w-5 h-5", theme === opt.value ? "text-primary" : "text-secondary-fg")} />
                 <span className={cn("text-sm font-medium", theme === opt.value ? "text-primary" : "text-secondary-fg")}>
-                  {opt.label}
+                  {t(opt.label)}
                 </span>
               </button>
             );
@@ -110,6 +113,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <LanguageCard />
       <SyncCard />
       <TelegramCard />
       <RemindersCard />
@@ -117,13 +121,13 @@ export default function SettingsPage() {
 
       {/* About */}
       <div className="card p-5">
-        <h2 className="font-semibold text-base-fg mb-1">About TaskFlow</h2>
-        <p className="text-sm text-secondary-fg">Version 1.1.0 · Local-first mode</p>
+        <h2 className="font-semibold text-base-fg mb-1">{t("About TaskFlow")}</h2>
+        <p className="text-sm text-secondary-fg">{t("Version {v} · Local-first mode", { v: "1.1.0" })}</p>
         <div className="mt-3 text-xs text-muted-fg space-y-1">
-          <p>💾 All data saved locally in your browser (encrypted)</p>
-          <p>⚡ Add tasks from Shortcuts, Notes, Telegram or any link</p>
-          <p>📊 Real-time analytics and habit tracking</p>
-          <p>⏱️ Integrated Pomodoro timer</p>
+          <p>💾 {t("All data saved locally in your browser (encrypted)")}</p>
+          <p>⚡ {t("Add tasks from Shortcuts, Notes, Telegram or any link")}</p>
+          <p>📊 {t("Real-time analytics and habit tracking")}</p>
+          <p>⏱️ {t("Integrated Pomodoro timer")}</p>
         </div>
       </div>
     </div>

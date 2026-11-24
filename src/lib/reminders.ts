@@ -9,6 +9,7 @@
  */
 
 import { useSyncExternalStore } from "react";
+import { tr } from "@/lib/i18n";
 import { localPrefs, type LocalTelegram } from "@/lib/local-store";
 import { server } from "@/lib/telegram";
 import { hasUnsyncedChanges, isSyncEnabled } from "@/lib/sync";
@@ -107,7 +108,7 @@ export async function syncReminders(force = false): Promise<SyncSummary | null> 
     setSyncState({ lastSync: Date.now(), error: null, summary: out });
     return out;
   } catch (e) {
-    setSyncState({ error: e instanceof Error ? e.message : "Sync failed" });
+    setSyncState({ error: e instanceof Error ? e.message : tr("Sync failed") });
     return null;
   }
 }
@@ -127,7 +128,7 @@ export async function clearServerCopy(): Promise<void> {
 
 export async function sendTestReminder(channel: "telegram" | "email" | "push"): Promise<{ delivered: boolean; detail: string }> {
   const cfg = serverConfig();
-  if (!cfg) return { delivered: false, detail: "Connect the bot server first" };
+  if (!cfg) return { delivered: false, detail: tr("Connect the bot server first") };
   return server<{ delivered: boolean; detail: string }>(cfg.serverUrl, `/api/reminders?test=${channel}`, { method: "POST", headers: authHeader(cfg) });
 }
 

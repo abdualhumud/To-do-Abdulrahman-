@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Activity, Check, ExternalLink, Loader2, RefreshCw, Send, Unplug, X } from "lucide-react";
 import toast from "react-hot-toast";
+import { fmtTime, useT } from "@/lib/i18n";
 import { useTelegramConfig } from "@/lib/use-local-store";
 import {
   connectBot,
@@ -17,6 +18,7 @@ import {
 } from "@/lib/telegram";
 
 export function TelegramCard() {
+  const t = useT();
   const config = useTelegramConfig();
   const status = useTelegramStatus();
   const [token, setToken] = useState("");
@@ -37,7 +39,7 @@ export function TelegramCard() {
       await action();
       toast.success(success);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      toast.error(err instanceof Error ? err.message : t("Something went wrong"));
     } finally {
       setBusy(false);
     }
@@ -47,7 +49,7 @@ export function TelegramCard() {
     setBusy(true);
     const { added } = await pollTelegram();
     setBusy(false);
-    toast.success(added.length ? `Added ${added.length} task${added.length === 1 ? "" : "s"}` : "Nothing new");
+    toast.success(added.length ? (added.length === 1 ? t("Added 1 task") : t("Added {n} tasks", { n: added.length })) : t("Nothing new"));
   }
 
   async function handleDiagnose() {
@@ -57,7 +59,7 @@ export function TelegramCard() {
   }
 
   function handleDisconnect() {
-    if (!confirm("Disconnect Telegram from this browser? Your tasks stay.")) return;
+    if (!confirm(t("Disconnect Telegram from this browser? Your tasks stay."))) return;
     disconnectBot();
     setDiag(null);
   }
@@ -65,7 +67,7 @@ export function TelegramCard() {
   const header = (
     <div className="flex items-center gap-2">
       <Send className="w-4 h-4 text-secondary-fg" />
-      <h2 className="font-semibold text-base-fg">Telegram</h2>
+      <h2 className="font-semibold text-base-fg">{t("Telegram")}</h2>
     </div>
   );
 
@@ -74,18 +76,18 @@ export function TelegramCard() {
       <div className="card p-5 space-y-5">
         {header}
         <p className="text-sm text-secondary-fg">
-          Message your own Telegram bot and the text becomes a task here. Create a bot with{" "}
+          {t("Message your own Telegram bot and the text becomes a task here. Create a bot with")}{" "}
           <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-primary font-medium hover:underline">
             @BotFather
           </a>{" "}
-          (send <code className="bg-secondary px-1 rounded">/newbot</code>).
+          ({t("send")} <code className="bg-secondary px-1 rounded">/newbot</code>).
         </p>
 
-        <form onSubmit={(e) => { e.preventDefault(); void run(() => connectServer(serverUrl), "Server connected — now link your Telegram chat"); }} className="space-y-3">
+        <form onSubmit={(e) => { e.preventDefault(); void run(() => connectServer(serverUrl), t("Server connected — now link your Telegram chat")); }} className="space-y-3">
           <div>
-            <h3 className="text-sm font-semibold text-base-fg">Always-on server <span className="text-xs font-normal text-success">recommended</span></h3>
+            <h3 className="text-sm font-semibold text-base-fg">{t("Always-on server")} <span className="text-xs font-normal text-success">{t("recommended")}</span></h3>
             <p className="text-xs text-secondary-fg mt-0.5">
-              The bot replies instantly, even when this app is closed. Paste the address of your deployed bot server.
+              {t("The bot replies instantly, even when this app is closed. Paste the address of your deployed bot server.")}
             </p>
           </div>
           <input
@@ -99,21 +101,21 @@ export function TelegramCard() {
             autoCorrect="off"
             spellCheck={false}
             dir="ltr"
-            aria-label="Bot server address"
+            aria-label={t("Bot server address")}
             required
           />
           <button type="submit" disabled={busy || !serverUrl.trim()} className="btn-primary disabled:opacity-50">
-            {busy && <Loader2 className="w-4 h-4 animate-spin" />} Connect server
+            {busy && <Loader2 className="w-4 h-4 animate-spin" />} {t("Connect server")}
           </button>
         </form>
 
         <div className="flex items-center gap-3 text-xs text-muted-fg">
-          <span className="flex-1 h-px bg-secondary" /> or, without a server <span className="flex-1 h-px bg-secondary" />
+          <span className="flex-1 h-px bg-secondary" /> {t("or, without a server")} <span className="flex-1 h-px bg-secondary" />
         </div>
 
-        <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await connectBot(token); setToken(""); }, "Bot connected — now link your Telegram chat"); }} className="space-y-3">
+        <form onSubmit={(e) => { e.preventDefault(); void run(async () => { await connectBot(token); setToken(""); }, t("Bot connected — now link your Telegram chat")); }} className="space-y-3">
           <p className="text-xs text-secondary-fg">
-            Browser only: this browser talks to Telegram with your bot token (kept encrypted here). Works while TaskFlow is open.
+            {t("Browser only: this browser talks to Telegram with your bot token (kept encrypted here). Works while TaskFlow is open.")}
           </p>
           <input
             type="text"
@@ -126,11 +128,11 @@ export function TelegramCard() {
             autoCorrect="off"
             spellCheck={false}
             dir="ltr"
-            aria-label="Bot token"
+            aria-label={t("Bot token")}
             required
           />
           <button type="submit" disabled={busy || !token.trim()} className="btn-secondary disabled:opacity-50">
-            {busy && <Loader2 className="w-4 h-4 animate-spin" />} Connect bot
+            {busy && <Loader2 className="w-4 h-4 animate-spin" />} {t("Connect bot")}
           </button>
         </form>
       </div>
@@ -139,7 +141,7 @@ export function TelegramCard() {
 
   const linked = isLinked(config);
   const expired = !linked && config.pairExpires !== null && now > config.pairExpires;
-  const lastSync = status.lastSync ? new Date(status.lastSync).toLocaleTimeString() : "not yet";
+  const lastSync = status.lastSync ? fmtTime(new Date(status.lastSync)) : t("not yet");
   const serverMode = config.mode === "server";
 
   return (
@@ -149,39 +151,39 @@ export function TelegramCard() {
       {linked ? (
         <>
           <p className="text-sm text-base-fg">
-            <span className="inline-block w-2 h-2 rounded-full bg-success mr-2" />
-            Connected to <strong>@{config.botUsername}</strong>
-            <span className="text-xs text-muted-fg"> · {serverMode ? "always-on server" : "browser only"}</span>
+            <span className="inline-block w-2 h-2 rounded-full bg-success me-2" />
+            {t("Connected to")} <strong dir="ltr">@{config.botUsername}</strong>
+            <span className="text-xs text-muted-fg"> · {serverMode ? t("always-on server") : t("browser only")}</span>
           </p>
           <p className="text-sm text-secondary-fg">
-            Send the bot any message — one task per line, dates and <code className="bg-secondary px-1 rounded">#category !priority</code> work too.{" "}
+            {t("Send the bot any message — one task per line, dates and")} <code className="bg-secondary px-1 rounded">#category !priority</code> {t("work too.")}{" "}
             {serverMode
-              ? "The bot saves and confirms instantly, even when this app is closed; tasks appear here when TaskFlow is open (checked every 30 seconds)."
-              : "Tasks arrive while TaskFlow is open (checked every 30 seconds); Telegram holds messages for 24 hours."}
+              ? t("The bot saves and confirms instantly, even when this app is closed; tasks appear here when TaskFlow is open (checked every 30 seconds).")
+              : t("Tasks arrive while TaskFlow is open (checked every 30 seconds); Telegram holds messages for 24 hours.")}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <a href={`https://t.me/${config.botUsername}`} target="_blank" rel="noopener noreferrer" className="btn-primary text-sm">
-              <ExternalLink className="w-4 h-4" /> Open @{config.botUsername}
+              <ExternalLink className="w-4 h-4" /> {t("Open")} @{config.botUsername}
             </a>
             <button onClick={handleSyncNow} disabled={busy} className="btn-secondary text-sm">
-              <RefreshCw className={`w-4 h-4 ${busy ? "animate-spin" : ""}`} /> Sync now
+              <RefreshCw className={`w-4 h-4 ${busy ? "animate-spin" : ""}`} /> {t("Sync now")}
             </button>
             <button onClick={handleDisconnect} className="btn-ghost text-sm text-danger">
-              <Unplug className="w-4 h-4" /> Disconnect
+              <Unplug className="w-4 h-4" /> {t("Disconnect")}
             </button>
           </div>
-          <p className="text-xs text-muted-fg">Last checked: {lastSync}</p>
+          <p className="text-xs text-muted-fg">{t("Last checked")}: {lastSync}</p>
         </>
       ) : (
         <>
           <p className="text-sm text-secondary-fg">
-            Bot <strong>@{config.botUsername}</strong> is ready. Link your chat so only <em>you</em> can add tasks:
+            {t("Bot")} <strong dir="ltr">@{config.botUsername}</strong> {t("is ready. Link your chat so only you can add tasks:")}
           </p>
           {expired ? (
-            <p className="text-sm text-warning">This code expired.</p>
+            <p className="text-sm text-warning">{t("This code expired.")}</p>
           ) : (
             <div className="bg-secondary rounded-xl p-4 space-y-2">
-              <p className="text-xs text-secondary-fg">Open the bot and press Start — or send this message:</p>
+              <p className="text-xs text-secondary-fg">{t("Open the bot and press Start — or send this message:")}</p>
               <code className="block text-lg font-mono font-semibold text-base-fg tracking-wider" dir="ltr">
                 /link {config.pairCode}
               </code>
@@ -195,19 +197,19 @@ export function TelegramCard() {
                 rel="noopener noreferrer"
                 className="btn-primary text-sm"
               >
-                <ExternalLink className="w-4 h-4" /> Open Telegram
+                <ExternalLink className="w-4 h-4" /> {t("Open Telegram")}
               </a>
             )}
-            <button onClick={() => void run(renewPairCode, "New code ready")} disabled={busy} className="btn-secondary text-sm">
-              <RefreshCw className="w-4 h-4" /> New code
+            <button onClick={() => void run(renewPairCode, t("New code ready"))} disabled={busy} className="btn-secondary text-sm">
+              <RefreshCw className="w-4 h-4" /> {t("New code")}
             </button>
             <button onClick={handleDisconnect} className="btn-ghost text-sm text-danger">
-              <Unplug className="w-4 h-4" /> Cancel
+              <Unplug className="w-4 h-4" /> {t("Cancel")}
             </button>
           </div>
           {!expired && (
             <p className="text-xs text-muted-fg flex items-center gap-1.5">
-              <Loader2 className="w-3 h-3 animate-spin" /> Waiting for you to link… keep this tab open
+              <Loader2 className="w-3 h-3 animate-spin" /> {t("Waiting for you to link… keep this tab open")}
             </p>
           )}
         </>
@@ -215,7 +217,7 @@ export function TelegramCard() {
 
       <div className="space-y-2">
         <button onClick={handleDiagnose} disabled={checking} className="btn-ghost text-xs px-2 py-1">
-          {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />} Check connection
+          {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5" />} {t("Check connection")}
         </button>
         {diag && (
           <ul className="space-y-1.5 text-xs">

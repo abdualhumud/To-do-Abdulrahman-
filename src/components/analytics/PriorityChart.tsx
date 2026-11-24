@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import { useT } from "@/lib/i18n";
 
 const PRIORITY_COLORS = {
   urgent: "#ef4444",
@@ -21,20 +22,24 @@ const PRIORITY_COLORS = {
 };
 
 export function PriorityChart() {
+  const t = useT();
   const { tasks } = useTaskStore();
 
   const data = useMemo(() => {
     return (["urgent", "high", "medium", "low"] as const).map((priority) => ({
-      name: priority.charAt(0).toUpperCase() + priority.slice(1),
+      name: priority,
       total: tasks.filter((t) => t.priority === priority).length,
       completed: tasks.filter((t) => t.priority === priority && t.status === "completed").length,
       color: PRIORITY_COLORS[priority],
     }));
   }, [tasks]);
 
+  const PRIORITY_LABELS = { urgent: "Urgent", high: "High", medium: "Medium", low: "Low" } as const;
+  const shown = data.map((d) => ({ ...d, name: t(PRIORITY_LABELS[d.name]) }));
+
   return (
     <ResponsiveContainer width="100%" height={200}>
-      <BarChart data={data} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
+      <BarChart data={shown} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="rgb(var(--border))" />
         <XAxis dataKey="name" tick={{ fontSize: 12, fill: "rgb(var(--muted-fg))" }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 12, fill: "rgb(var(--muted-fg))" }} axisLine={false} tickLine={false} allowDecimals={false} />
@@ -47,13 +52,13 @@ export function PriorityChart() {
             color: "rgb(var(--fg))",
           }}
         />
-        <Bar dataKey="total" name="Total" radius={[4, 4, 0, 0]}>
-          {data.map((entry, index) => (
+        <Bar dataKey="total" name={t("Total")} radius={[4, 4, 0, 0]}>
+          {shown.map((entry, index) => (
             <Cell key={index} fill={entry.color} opacity={0.8} />
           ))}
         </Bar>
-        <Bar dataKey="completed" name="Done" radius={[4, 4, 0, 0]}>
-          {data.map((entry, index) => (
+        <Bar dataKey="completed" name={t("Done")} radius={[4, 4, 0, 0]}>
+          {shown.map((entry, index) => (
             <Cell key={index} fill={entry.color} />
           ))}
         </Bar>

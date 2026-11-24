@@ -12,6 +12,7 @@ import { buildCalendar, type CalendarItem } from "../../telegram-bot/lib/ics";
 import { authHeader, deviceTimeZone, serverConfig } from "@/lib/reminders";
 import { server } from "@/lib/telegram";
 import { todayLocal } from "@/lib/utils";
+import { tr } from "@/lib/i18n";
 
 const EVENT_MS = 30 * 60_000;
 
@@ -60,7 +61,7 @@ export function outlookUrl(task: Task, flavor: OutlookFlavor): string | null {
   if (!item) return null;
   const base = flavor === "office" ? "https://outlook.office.com" : "https://outlook.live.com";
   const params = new URLSearchParams({ path: "/calendar/action/compose", rru: "addevent", subject: task.title });
-  const body = [task.description, task.due_date ? `Due: ${task.due_date}` : ""].filter(Boolean).join("\n");
+  const body = [task.description, task.due_date ? tr("Due: {date}", { date: task.due_date }) : ""].filter(Boolean).join("\n");
   if (body) params.set("body", body);
   if (item.reminder_at) {
     params.set("startdt", new Date(item.reminder_at).toISOString());
@@ -78,7 +79,7 @@ export function outlookUrl(task: Task, flavor: OutlookFlavor): string | null {
 /** Private subscription link for Apple Calendar / Outlook; needs the bot server. */
 export async function createFeedUrls(): Promise<{ https: string; webcal: string }> {
   const cfg = serverConfig();
-  if (!cfg) throw new Error("Connect the bot server first (Settings → Telegram)");
+  if (!cfg) throw new Error(tr("Connect the bot server first (Settings → Telegram)"));
   const out = await server<{ url: string }>(cfg.serverUrl, "/api/feed", { method: "POST", headers: authHeader(cfg) });
   return { https: out.url, webcal: out.url.replace(/^https:/, "webcal:") };
 }

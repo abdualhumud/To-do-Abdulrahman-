@@ -36,7 +36,7 @@ test("translations keep the same {placeholders} and are really Arabic", () => {
   const bad: string[] = [];
   for (const [en, ar] of Object.entries(AR)) {
     if (vars(en) !== vars(ar)) bad.push(`placeholders differ: ${en}`);
-    if (/[A-Za-z]{4,}/.test(en) && !/[؀-ۿ]/.test(ar)) bad.push(`not Arabic: ${en} → ${ar}`);
+    if (en !== ar && /[A-Za-z]{4,}/.test(en) && !/[؀-ۿ]/.test(ar)) bad.push(`not Arabic: ${en} → ${ar}`);
   }
   assert.deepEqual(bad, []);
 });

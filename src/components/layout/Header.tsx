@@ -6,6 +6,8 @@ import Link from "next/link";
 import { Sun, Moon, LogOut, AlertTriangle, X, Search, Cloud, CloudOff } from "lucide-react";
 import { useLocalSync } from "@/lib/use-local-store";
 import { useSyncStatus } from "@/lib/sync-status";
+import { fmtDate, useT } from "@/lib/i18n";
+import { LanguageToggle } from "@/components/layout/LanguageToggle";
 import toast from "react-hot-toast";
 import { useState } from "react";
 import { localUser, type LocalUser } from "@/lib/local-store";
@@ -24,6 +26,7 @@ const PAGE_TITLES: Record<string, string> = {
 };
 
 export function Header({ user }: HeaderProps) {
+  const t = useT();
   const router = useRouter();
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
@@ -45,7 +48,7 @@ export function Header({ user }: HeaderProps) {
   function confirmLogout() {
     localUser.clear();
     setShowLogoutConfirm(false);
-    toast.success("Signed out — your data stays in this browser");
+    toast.success(t("Signed out — your data stays in this browser"));
     router.push("/login");
   }
 
@@ -63,8 +66,8 @@ export function Header({ user }: HeaderProps) {
 
   const displayName = user.name || user.email?.split("@")[0] || "User";
   const initials = displayName.split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2);
-  const greeting = getGreeting();
-  const dateStr = new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+  const greeting = t(getGreeting());
+  const dateStr = fmtDate(new Date(), { weekday: "long", month: "short", day: "numeric" });
 
   return (
     <>
@@ -77,9 +80,9 @@ export function Header({ user }: HeaderProps) {
                 <AlertTriangle className="w-5 h-5 text-danger" />
               </div>
               <div className="flex-1">
-                <h2 className="font-semibold text-base-fg">Sign out?</h2>
+                <h2 className="font-semibold text-base-fg">{t("Sign out?")}</h2>
                 <p className="text-sm text-secondary-fg mt-1">
-                  Your tasks and data stay saved in this browser. Only your session is cleared.
+                  {t("Your tasks and data stay saved in this browser. Only your session is cleared.")}
                 </p>
               </div>
               <button onClick={() => setShowLogoutConfirm(false)} className="text-muted-fg hover:text-base-fg transition-colors">
@@ -88,21 +91,21 @@ export function Header({ user }: HeaderProps) {
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setShowLogoutConfirm(false)} className="btn-secondary px-4 py-2 text-sm">
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 onClick={confirmLogout}
                 className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 active:bg-red-800 transition-colors"
               >
                 <LogOut className="w-4 h-4" />
-                Sign Out
+                {t("Sign Out")}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      <header className="h-16 border-b border-base bg-card/90 glass flex items-center justify-between px-4 md:px-6 gap-4 sticky top-0 z-30">
+      <header className="min-h-16 pt-[env(safe-area-inset-top)] border-b border-base bg-card/90 glass flex items-center justify-between px-4 md:px-6 gap-4 sticky top-0 z-30">
         {/* Left: title / greeting */}
         <div className="flex-1 min-w-0">
           {searchOpen ? (
@@ -114,7 +117,7 @@ export function Header({ user }: HeaderProps) {
                 value={searchVal}
                 onChange={(e) => handleSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Escape" && closeSearch()}
-                placeholder="Search tasks…"
+                placeholder={t("Search tasks…")}
                 className="flex-1 bg-transparent text-sm text-base-fg outline-none placeholder:text-muted-fg"
               />
               <button onClick={closeSearch} className="text-muted-fg hover:text-base-fg flex-shrink-0">
@@ -126,8 +129,8 @@ export function Header({ user }: HeaderProps) {
               <p className="text-xs text-muted-fg hidden md:block">{dateStr}</p>
               <h1 className="text-sm font-bold text-base-fg leading-tight">
                 {pathname === "/dashboard"
-                  ? `${greeting}, ${displayName.split(" ")[0]}! 👋`
-                  : pageTitle}
+                  ? `${greeting}${t(",")} ${displayName.split(" ")[0]}! 👋`
+                  : t(pageTitle)}
               </h1>
             </div>
           )}
@@ -138,19 +141,20 @@ export function Header({ user }: HeaderProps) {
           {sync && (
             <Link
               href="/settings/#sync"
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all relative"
-              title={syncStatus.error ? `Sync problem: ${syncStatus.error}` : syncStatus.current ? "Synced" : "Syncing…"}
-              aria-label={syncStatus.error ? "Sync problem" : syncStatus.current ? "Synced across devices" : "Syncing"}
+              className="w-11 h-11 md:w-9 md:h-9 rounded-xl flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all relative"
+              title={syncStatus.error ? t("Sync problem: {error}", { error: syncStatus.error }) : syncStatus.current ? t("Synced") : t("Syncing…")}
+              aria-label={syncStatus.error ? t("Sync problem") : syncStatus.current ? t("Synced across devices") : t("Syncing")}
             >
               {syncStatus.error ? <CloudOff className="w-4 h-4 text-danger" /> : <Cloud className={`w-4 h-4 ${syncStatus.syncing ? "animate-pulse" : ""}`} />}
             </Link>
           )}
+          <LanguageToggle />
           {/* Search toggle */}
           {!searchOpen && (
             <button
               onClick={() => setSearchOpen(true)}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all"
-              title="Search" aria-label="Search tasks"
+              className="w-11 h-11 md:w-9 md:h-9 rounded-xl flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all"
+              title={t("Search")} aria-label={t("Search tasks")}
             >
               <Search className="w-4 h-4" />
             </button>
@@ -159,8 +163,8 @@ export function Header({ user }: HeaderProps) {
           {/* Theme toggle */}
           <button
             onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all"
-            title="Toggle theme" aria-label="Toggle theme"
+            className="w-11 h-11 md:w-9 md:h-9 rounded-xl flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all"
+            title={t("Toggle theme")} aria-label={t("Toggle theme")}
           >
             {resolvedTheme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
@@ -169,7 +173,7 @@ export function Header({ user }: HeaderProps) {
           <div className="relative">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-2 pl-1.5 pr-2.5 py-1.5 rounded-xl hover:bg-secondary transition-colors"
+              className="flex items-center gap-2 ps-1.5 pe-2.5 py-1.5 rounded-xl hover:bg-secondary transition-colors"
             >
               <div className="w-7 h-7 bg-primary rounded-lg flex items-center justify-center text-xs font-bold text-white shadow-soft">
                 {initials}
@@ -182,7 +186,7 @@ export function Header({ user }: HeaderProps) {
             {showUserMenu && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
-                <div className="absolute right-0 top-full mt-2 w-52 card shadow-lg z-50 p-1 animate-scale-in">
+                <div className="absolute end-0 top-full mt-2 w-52 card shadow-lg z-50 p-1 animate-scale-in">
                   <div className="px-3 py-2.5 border-b border-base mb-1">
                     <p className="text-sm font-semibold text-base-fg truncate">{displayName}</p>
                     {user.email && <p className="text-xs text-muted-fg truncate">{user.email}</p>}
@@ -192,7 +196,7 @@ export function Header({ user }: HeaderProps) {
                     className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-danger hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
                   >
                     <LogOut className="w-4 h-4" />
-                    Sign Out
+                    {t("Sign Out")}
                   </button>
                 </div>
               </>

@@ -13,6 +13,7 @@
  */
 
 import { hash } from "@/lib/sync-core";
+import { fmtTime, tr } from "@/lib/i18n";
 import { isSyncEnabled, syncNow } from "@/lib/sync";
 import { useSyncExternalStore } from "react";
 import { localTelegram, type LocalTelegram } from "@/lib/local-store";
@@ -59,7 +60,7 @@ const MSG_TOKEN =
   "Telegram doesn't accept this token. Copy it again from @BotFather (/mybots → your bot → API Token) — without < > or spaces.";
 
 function describe(e: unknown): string {
-  return e instanceof Error ? e.message : "Unknown error";
+  return e instanceof Error ? e.message : tr("Unknown error");
 }
 
 /** Users paste tokens as "<123:ABC>", "bot123:ABC" or with spaces/newlines — accept all of them. */
@@ -82,7 +83,7 @@ async function tg<T>(token: string, method: string, params: Record<string, strin
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {
-    throw new TelegramError(MSG_NETWORK, "network");
+    throw new TelegramError(tr(MSG_NETWORK), "network");
   }
   const data = (await res.json().catch(() => null)) as {
     ok: boolean;
@@ -93,10 +94,10 @@ async function tg<T>(token: string, method: string, params: Record<string, strin
   if (data?.ok) return data.result;
 
   const code = data?.error_code ?? res.status;
-  if (code === 401 || code === 404) throw new TelegramError(MSG_TOKEN, "token", code);
-  if (code === 409) throw new TelegramError(data?.description ?? "Another consumer is reading this bot", "conflict", code);
-  if (code === 429) throw new TelegramError("Telegram asked us to slow down — retrying shortly", "rate", code);
-  throw new TelegramError(data?.description ?? `Telegram error ${res.status}`, "api", code);
+  if (code === 401 || code === 404) throw new TelegramError(tr(MSG_TOKEN), "token", code);
+  if (code === 409) throw new TelegramError(data?.description ?? tr("Another consumer is reading this bot"), "conflict", code);
+  if (code === 429) throw new TelegramError(tr("Telegram asked us to slow down — retrying shortly"), "rate", code);
+  throw new TelegramError(data?.description ?? tr("Telegram error {status}", { status: res.status }), "api", code);
 }
 
 // ─── Always-on server API ─────────────────────────────────────────────────────
@@ -104,14 +105,14 @@ async function tg<T>(token: string, method: string, params: Record<string, strin
 /** "my-bot.vercel.app", "https://my-bot.vercel.app/" or ".../api/setup?key=…" → "https://my-bot.vercel.app" */
 export function normalizeServerUrl(raw: string): string {
   const trimmed = raw.trim();
-  if (!trimmed) throw new TelegramError("Enter the address of your bot server, e.g. https://my-bot.vercel.app", "api");
+  if (!trimmed) throw new TelegramError(tr("Enter the address of your bot server, e.g. https://my-bot.vercel.app"), "api");
   let url: URL;
   try {
     url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
   } catch {
-    throw new TelegramError("That doesn't look like a web address", "api");
+    throw new TelegramError(tr("That doesn't look like a web address"), "api");
   }
-  if (url.protocol !== "https:") throw new TelegramError("The bot server address must start with https://", "api");
+  if (url.protocol !== "https:") throw new TelegramError(tr("The bot server address must start with https://"), "api");
   return url.origin;
 }
 
@@ -133,14 +134,14 @@ export async function server<T>(base: string, path: string, init: RequestInit = 
   try {
     res = await fetch(`${base}${path}`, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   } catch {
-    throw new TelegramError(`Couldn't reach ${new URL(base).host}. Check the address, and that the server is deployed.`, "network");
+    throw new TelegramError(tr("Couldn't reach {host}. Check the address, and that the server is deployed.", { host: new URL(base).host }), "network");
   }
   const data = (await res.json().catch(() => null)) as (T & { ok?: boolean; error?: string }) | null;
   if (!data || typeof data !== "object") {
-    throw new TelegramError("That address doesn't look like a TaskFlow bot server (no JSON reply).", "api", res.status);
+    throw new TelegramError(tr("That address doesn't look like a TaskFlow bot server (no JSON reply)."), "api", res.status);
   }
-  if (res.status === 401) throw new TelegramError("The server rejected this app's key — press Disconnect and connect again.", "token", 401);
-  if (data.ok === false || !res.ok) throw new TelegramError(data.error ?? `Server error ${res.status}`, "api", res.status);
+  if (res.status === 401) throw new TelegramError(tr("The server rejected this app's key — press Disconnect and connect again."), "token", 401);
+  if (data.ok === false || !res.ok) throw new TelegramError(data.error ?? tr("Server error {status}", { status: res.status }), "api", res.status);
   return data;
 }
 
@@ -181,7 +182,7 @@ function newPairCode(): string {
 export async function connectBot(rawToken: string): Promise<LocalTelegram> {
   const token = normalizeToken(rawToken);
   if (!TOKEN_RE.test(token)) {
-    throw new TelegramError("That doesn't look like a bot token — it looks like 123456789:AAH… (copy it from @BotFather)", "token");
+    throw new TelegramError(tr("That doesn't look like a bot token — it looks like 123456789:AAH… (copy it from @BotFather)"), "token");
   }
   const me = await tg<{ username?: string }>(token, "getMe");
   await tg<boolean>(token, "deleteWebhook");
@@ -227,10 +228,10 @@ export async function connectServer(rawUrl: string): Promise<LocalTelegram> {
   const base = normalizeServerUrl(rawUrl);
   const report = await server<ServerStatus>(base, "/api/status");
   if (!report.configured) {
-    throw new TelegramError(`The server is online but not ready: ${report.problem ?? "missing configuration"}.`, "api");
+    throw new TelegramError(tr("The server is online but not ready: {problem}.", { problem: report.problem ?? tr("missing configuration") }), "api");
   }
   if (!report.webhookSet) {
-    throw new TelegramError(`The server is ready but the bot isn't attached yet. Open ${base}/api/setup?key=YOUR_WEBHOOK_SECRET once, then connect again.`, "api");
+    throw new TelegramError(tr("The server is ready but the bot isn't attached yet. Open {url} once, then connect again.", { url: `${base}/api/setup?key=YOUR_WEBHOOK_SECRET` }), "api");
   }
   return startServerPairing(base);
 }
@@ -261,29 +262,29 @@ export interface DiagStep {
 /** Step-by-step health check shown in Settings, so a failure names its own cause. */
 export async function diagnoseTelegram(): Promise<DiagStep[]> {
   const cfg = localTelegram.get();
-  if (!cfg) return [{ label: "Bot connected", ok: false, detail: "Not connected" }];
+  if (!cfg) return [{ label: tr("Bot connected"), ok: false, detail: tr("Not connected") }];
   const steps: DiagStep[] = [];
   const linkStep = (): DiagStep => ({
-    label: "Chat linked",
+    label: tr("Chat linked"),
     ok: isLinked(cfg),
-    detail: isLinked(cfg) ? "Yes" : "Not yet — send the /link code to the bot",
+    detail: isLinked(cfg) ? tr("Yes") : tr("Not yet — send the /link code to the bot"),
   });
   const lastStep = (): DiagStep => ({
-    label: "Last check",
+    label: tr("Last check"),
     ok: status.error === null,
-    detail: status.error ?? (status.lastSync ? new Date(status.lastSync).toLocaleTimeString() : "not yet"),
+    detail: status.error ?? (status.lastSync ? fmtTime(new Date(status.lastSync)) : tr("not yet")),
   });
 
   if (cfg.mode === "server") {
     try {
       const r = await server<ServerStatus>(cfg.serverUrl, "/api/status");
-      steps.push({ label: "Server reachable", ok: true, detail: new URL(cfg.serverUrl).host });
-      steps.push({ label: "Server configured", ok: r.configured, detail: r.configured ? "Token, secret and Redis set" : (r.problem ?? "Incomplete") });
-      steps.push({ label: "Telegram bot attached", ok: Boolean(r.webhookSet), detail: r.webhookSet ? `@${r.bot}` : `Open ${cfg.serverUrl}/api/setup?key=YOUR_WEBHOOK_SECRET` });
-      if (r.webhookError) steps.push({ label: "Telegram delivery", ok: false, detail: r.webhookError });
-      steps.push({ label: "Redis inbox", ok: r.redis === true, detail: r.redis === true ? "Working" : "Not responding" });
+      steps.push({ label: tr("Server reachable"), ok: true, detail: new URL(cfg.serverUrl).host });
+      steps.push({ label: tr("Server configured"), ok: r.configured, detail: r.configured ? tr("Token, secret and Redis set") : (r.problem ?? tr("Incomplete")) });
+      steps.push({ label: tr("Telegram bot attached"), ok: Boolean(r.webhookSet), detail: r.webhookSet ? `@${r.bot}` : tr("Open {url}", { url: `${cfg.serverUrl}/api/setup?key=YOUR_WEBHOOK_SECRET` }) });
+      if (r.webhookError) steps.push({ label: tr("Telegram delivery"), ok: false, detail: r.webhookError });
+      steps.push({ label: tr("Redis inbox"), ok: r.redis === true, detail: r.redis === true ? tr("Working") : tr("Not responding") });
     } catch (e) {
-      steps.push({ label: "Server reachable", ok: false, detail: describe(e) });
+      steps.push({ label: tr("Server reachable"), ok: false, detail: describe(e) });
       return steps;
     }
     steps.push(linkStep(), lastStep());
@@ -292,9 +293,9 @@ export async function diagnoseTelegram(): Promise<DiagStep[]> {
 
   try {
     const me = await tg<{ username?: string }>(cfg.token, "getMe");
-    steps.push({ label: "Telegram accepts the token", ok: true, detail: `@${me.username ?? "bot"}` });
+    steps.push({ label: tr("Telegram accepts the token"), ok: true, detail: `@${me.username ?? "bot"}` });
   } catch (e) {
-    steps.push({ label: "Telegram accepts the token", ok: false, detail: describe(e) });
+    steps.push({ label: tr("Telegram accepts the token"), ok: false, detail: describe(e) });
     return steps;
   }
   try {
@@ -302,12 +303,12 @@ export async function diagnoseTelegram(): Promise<DiagStep[]> {
     if (info.url) {
       await tg<boolean>(cfg.token, "deleteWebhook");
       const host = info.url.replace(/^https?:\/\//, "").split("/")[0];
-      steps.push({ label: "No webhook blocking polling", ok: true, detail: `Removed a leftover webhook (${host})` });
+      steps.push({ label: tr("No webhook blocking polling"), ok: true, detail: tr("Removed a leftover webhook ({host})", { host }) });
     } else {
-      steps.push({ label: "No webhook blocking polling", ok: true, detail: "Clear" });
+      steps.push({ label: tr("No webhook blocking polling"), ok: true, detail: tr("Clear") });
     }
   } catch (e) {
-    steps.push({ label: "No webhook blocking polling", ok: false, detail: describe(e) });
+    steps.push({ label: tr("No webhook blocking polling"), ok: false, detail: describe(e) });
   }
   steps.push(linkStep(), lastStep());
   return steps;

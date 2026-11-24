@@ -6,6 +6,7 @@ import { useTaskStore } from "@/store/useTaskStore";
 import { X, Plus, Loader2, CalendarPlus } from "lucide-react";
 import { cn, todayLocal } from "@/lib/utils";
 import toast from "react-hot-toast";
+import { useT } from "@/lib/i18n";
 import { ReminderFields, type ReminderValue } from "@/components/tasks/ReminderFields";
 import { CalendarSheet } from "@/components/tasks/CalendarSheet";
 import { usePrefs, useTelegramConfig } from "@/lib/use-local-store";
@@ -19,6 +20,15 @@ interface TaskModalProps {
 const PRIORITIES: Priority[] = ["low", "medium", "high", "urgent"];
 const CATEGORIES: Category[] = ["work", "personal", "health", "learning", "finance", "social", "other"];
 
+const PRIORITY_LABELS: Record<Priority, string> = { low: "Low", medium: "Medium", high: "High", urgent: "Urgent" };
+const CATEGORY_LABELS: Record<Category, string> = {
+  work: "Work", personal: "Personal", health: "Health", learning: "Learning",
+  finance: "Finance", social: "Social", other: "Other",
+};
+const STATUS_LABELS: Record<string, string> = {
+  pending: "Pending", in_progress: "In progress", completed: "Completed", cancelled: "Cancelled",
+};
+
 const PRIORITY_COLORS: Record<Priority, string> = {
   low: "#22c55e",
   medium: "#6366f1",
@@ -29,6 +39,7 @@ const PRIORITY_COLORS: Record<Priority, string> = {
 const TAG_COLORS = ["#6366f1", "#ec4899", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#22c55e"];
 
 export function TaskModal({ task, onClose }: TaskModalProps) {
+  const t = useT();
   const { createTask, updateTask, tags, createTag } = useTaskStore();
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState(task?.title || "");
@@ -76,9 +87,9 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) { toast.error("Title is required"); return; }
-    if (reminder.enabled && !fromLocalInput(reminder.at)) { toast.error("Pick a date and time for the reminder"); return; }
-    if (reminder.enabled && reminder.channels.length === 0) { toast.error("Pick at least one way to be reminded"); return; }
+    if (!title.trim()) { toast.error(t("Title is required")); return; }
+    if (reminder.enabled && !fromLocalInput(reminder.at)) { toast.error(t("Pick a date and time for the reminder")); return; }
+    if (reminder.enabled && reminder.channels.length === 0) { toast.error(t("Pick at least one way to be reminded")); return; }
     setLoading(true);
 
     const taskData = {
@@ -95,10 +106,10 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
     if (task) {
       await updateTask(task.id, taskData, selectedTagIds);
-      toast.success("Task updated!");
+      toast.success(t("Task updated!"));
     } else {
       await createTask(taskData, selectedTagIds);
-      toast.success("Task created!");
+      toast.success(t("Task created!"));
     }
 
     setLoading(false);
@@ -122,13 +133,13 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg card shadow-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-lg card shadow-2xl animate-slide-up max-h-[92dvh] sm:max-h-[90vh] overflow-y-auto overscroll-contain rounded-b-none sm:rounded-b-2xl pb-[env(safe-area-inset-bottom)]">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-base sticky top-0 bg-card z-10">
-          <h2 className="font-bold text-base-fg">{task ? "Edit Task" : "New Task"}</h2>
-          <button onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-muted-fg hover:bg-secondary hover:text-base-fg transition-all">
+          <h2 className="font-bold text-base-fg">{task ? t("Edit Task") : t("New Task")}</h2>
+          <button onClick={onClose} aria-label={t("Close")} className="w-11 h-11 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center text-muted-fg hover:bg-secondary hover:text-base-fg transition-all">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -136,13 +147,13 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {/* Title */}
           <div>
-            <label className="block text-sm font-medium text-base-fg mb-1.5">Task Title *</label>
+            <label className="block text-sm font-medium text-base-fg mb-1.5">{t("Task Title *")}</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="input-base"
-              placeholder="What needs to be done?"
+              placeholder={t("What needs to be done?")}
               autoFocus
               required
             />
@@ -150,12 +161,12 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-base-fg mb-1.5">Description</label>
+            <label className="block text-sm font-medium text-base-fg mb-1.5">{t("Description")}</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="input-base resize-none"
-              placeholder="Add details..."
+              placeholder={t("Add details...")}
               rows={3}
             />
           </div>
@@ -163,7 +174,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           {/* Priority & Category */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-base-fg mb-1.5">Priority</label>
+              <label className="block text-sm font-medium text-base-fg mb-1.5">{t("Priority")}</label>
               <div className="grid grid-cols-2 gap-1.5">
                 {PRIORITIES.map((p) => (
                   <button
@@ -178,21 +189,21 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                     )}
                     style={priority === p ? { background: PRIORITY_COLORS[p], borderColor: PRIORITY_COLORS[p] } : {}}
                   >
-                    {p}
+                    {t(PRIORITY_LABELS[p])}
                   </button>
                 ))}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-base-fg mb-1.5">Category</label>
+              <label className="block text-sm font-medium text-base-fg mb-1.5">{t("Category")}</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as Category)}
                 className="input-base capitalize"
               >
                 {CATEGORIES.map((c) => (
-                  <option key={c} value={c} className="capitalize">{c}</option>
+                  <option key={c} value={c} className="capitalize">{t(CATEGORY_LABELS[c])}</option>
                 ))}
               </select>
             </div>
@@ -201,19 +212,19 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           {/* Status & Due Date */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-base-fg mb-1.5">Status</label>
+              <label className="block text-sm font-medium text-base-fg mb-1.5">{t("Status")}</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as Task["status"])}
                 className="input-base capitalize"
               >
                 {["pending", "in_progress", "completed", "cancelled"].map((s) => (
-                  <option key={s} value={s}>{s.replace("_", " ")}</option>
+                  <option key={s} value={s}>{t(STATUS_LABELS[s])}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-base-fg mb-1.5">Due Date</label>
+              <label className="block text-sm font-medium text-base-fg mb-1.5">{t("Due Date")}</label>
               <input
                 type="date"
                 value={dueDate}
@@ -229,7 +240,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
 
           {/* Tags */}
           <div>
-            <label className="block text-sm font-medium text-base-fg mb-1.5">Tags</label>
+            <label className="block text-sm font-medium text-base-fg mb-1.5">{t("Tags")}</label>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {tags.map((tag: Tag) => (
                 <button
@@ -250,7 +261,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                 onClick={() => setShowTagInput(!showTagInput)}
                 className="text-xs px-2.5 py-1 rounded-full border border-dashed border-base text-muted-fg hover:text-primary hover:border-primary transition-all flex items-center gap-1"
               >
-                <Plus className="w-3 h-3" /> New Tag
+                <Plus className="w-3 h-3" /> {t("New Tag")}
               </button>
             </div>
 
@@ -273,29 +284,29 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
                   onChange={(e) => setNewTagName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCreateTag(); } }}
                   className="input-base h-7 py-0 text-xs flex-1"
-                  placeholder="Tag name..."
+                  placeholder={t("Tag name...")}
                 />
                 <button type="button" onClick={handleCreateTag} className="text-xs text-primary font-medium hover:underline">
-                  Add
+                  {t("Add")}
                 </button>
               </div>
             )}
           </div>
 
           {task && (
-            <button type="button" onClick={() => setShowCalendar(true)} className="btn-ghost text-xs -ml-2">
-              <CalendarPlus className="w-4 h-4" /> Add to Apple / Outlook calendar
+            <button type="button" onClick={() => setShowCalendar(true)} className="btn-ghost text-xs -ms-2">
+              <CalendarPlus className="w-4 h-4" /> {t("Add to Apple / Outlook calendar")}
             </button>
           )}
 
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">
-              Cancel
+              {t("Cancel")}
             </button>
             <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              {loading ? "Saving..." : task ? "Update Task" : "Create Task"}
+              {loading ? t("Saving...") : task ? t("Update Task") : t("Create Task")}
             </button>
           </div>
         </form>
