@@ -247,7 +247,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
 
           {/* Subtask list */}
           {showSubtasks && subtaskCount > 0 && (
-            <div className="mt-3 space-y-1.5 ps-2 border-l-2 border-base animate-slide-up">
+            <div className="mt-3 space-y-1.5 ps-2 border-s-2 border-base animate-slide-up">
               {task.subtasks?.map((sub) => (
                 <div key={sub.id} className="flex items-center gap-2 group/sub">
                   <button

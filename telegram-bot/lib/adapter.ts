@@ -36,7 +36,7 @@ export function safely(fn: (req: VercelRequest) => Promise<Result>) {
       send(res, await fn(req));
     } catch (e) {
       console.error(e);
-      res.status(500).json({ ok: false, error: e instanceof Error ? e.message : "Server error" });
+      res.status(500).json({ ok: false, error: "Server error" });
     }
   };
 }

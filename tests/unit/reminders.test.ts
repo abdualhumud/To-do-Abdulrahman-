@@ -200,10 +200,19 @@ test("phone push: delivers to every device and forgets devices that were unsubsc
   pushSent.length = 0;
   const headers = { authorization: `Bearer ${KEY}` };
   const sub = (endpoint: string) => ({ subscription: { endpoint, keys: { p256dh: "p", auth: "a" } } });
-  assert.equal((await handlePush(env, "POST", headers, sub("https://push.example/device-1"))).status, 200);
-  assert.equal((await handlePush(env, "POST", headers, sub("https://push.example/gone-2"))).status, 200);
+  assert.equal((await handlePush(env, "POST", headers, sub("https://fcm.googleapis.com/fcm/send/device-1"))).status, 200);
+  assert.equal((await handlePush(env, "POST", headers, sub("https://fcm.googleapis.com/fcm/send/gone-2"))).status, 200);
   assert.equal((await handlePush(env, "POST", headers, { subscription: { endpoint: "http://insecure" } })).status, 400);
-  assert.equal((await handlePush(env, "POST", {}, sub("https://push.example/x"))).status, 401);
+  assert.equal((await handlePush(env, "POST", {}, sub("https://fcm.googleapis.com/fcm/send/x"))).status, 401);
+  // SSRF guard: only real push services; no internal hosts, ports, credentials or look-alikes
+  for (const bad of ["https://push.example/device", "https://169.254.169.254/latest", "https://fcm.googleapis.com.evil.test/x", "https://user:pw@fcm.googleapis.com/x", "https://fcm.googleapis.com:8443/x"]) {
+    assert.equal((await handlePush(env, "POST", headers, sub(bad))).status, 400, bad);
+  }
+  // a well-formed key that was never linked by the owner is refused everywhere
+  const stranger = { authorization: `Bearer ${"z".repeat(32)}` };
+  assert.equal((await handlePush(env, "POST", stranger, sub("https://fcm.googleapis.com/fcm/send/y"))).status, 401);
+  assert.equal((await handleReminders(env, "POST", stranger, { test: "email" }, {}, NOW)).status, 401);
+  assert.equal((await handleFeedCreate(env, stranger, "x.test")).status, 401);
 
   const at = NOW + HOUR;
   await syncItems(env, KEY, body([{ id: "p1", title: "Stand up", reminder_at: at, channels: ["push"] }]), NOW);
@@ -213,7 +222,7 @@ test("phone push: delivers to every device and forgets devices that were unsubsc
   assert.equal(JSON.parse(pushSent[0].payload).title, "⏰ Stand up");
   assert.equal(redis.run(["HLEN", `push:${KEY}`]), 1); // the gone device was removed
 
-  await handlePush(env, "DELETE", headers, { endpoint: "https://push.example/device-1" });
+  await handlePush(env, "DELETE", headers, { endpoint: "https://fcm.googleapis.com/fcm/send/device-1" });
   assert.equal(redis.run(["HLEN", `push:${KEY}`]), 0);
 });
 

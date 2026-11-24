@@ -81,5 +81,6 @@ export async function createFeedUrls(): Promise<{ https: string; webcal: string 
   const cfg = serverConfig();
   if (!cfg) throw new Error(tr("Connect the bot server first (Settings → Telegram)"));
   const out = await server<{ url: string }>(cfg.serverUrl, "/api/feed", { method: "POST", headers: authHeader(cfg) });
+  if (!/^https:\/\/[^\s]+$/.test(String(out.url))) throw new Error(tr("The server returned an invalid calendar address"));
   return { https: out.url, webcal: out.url.replace(/^https:/, "webcal:") };
 }

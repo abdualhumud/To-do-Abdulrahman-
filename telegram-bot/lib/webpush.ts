@@ -95,6 +95,8 @@ export async function sendWebPush(sub: PushSubscription, payload: string, vapid:
   const jwt = await signVapidJwt(new URL(sub.endpoint).origin, vapid, subject, now);
   const res = await fetch(sub.endpoint, {
     method: "POST",
+    redirect: "manual",
+    signal: AbortSignal.timeout(8000),
     headers: {
       Authorization: `vapid t=${jwt}, k=${vapid.publicKey}`,
       "Content-Encoding": "aes128gcm",

@@ -47,11 +47,11 @@ const LocalUserSchema = z.object({
 export const TaskSchema = z
   .object({
     id: z.string(),
-    title: z.string().min(1).max(1000),
-    description: z.string().max(5000).nullable().optional(),
+    title: z.string().min(1),
+    description: z.string().nullable().optional(),
     status: z.enum(["pending", "in_progress", "completed", "cancelled"]).optional(),
     priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-    category: z.string().max(100).optional(),
+    category: z.string().optional(),
     due_date: z.string().nullable().optional(),
     completed_at: z.string().nullable().optional(),
     created_at: z.string().optional(),
@@ -65,7 +65,7 @@ export const TaskSchema = z
 export const TagSchema = z
   .object({
     id: z.string(),
-    name: z.string().min(1).max(100),
+    name: z.string().min(1),
     color: z.string().max(20).optional(),
   })
   .passthrough();
@@ -73,7 +73,7 @@ export const TagSchema = z
 export const HabitSchema = z
   .object({
     id: z.string(),
-    title: z.string().min(1).max(500),
+    title: z.string().min(1),
     frequency: z.enum(["daily", "weekly", "monthly"]).optional(),
     created_at: z.string().optional(),
   })
@@ -347,7 +347,17 @@ async function hydrateKey(key: string): Promise<void> {
   const raw = safeGetItem(key);
   if (!raw) return;
   const json = await decryptString(raw);
-  if (json === null) return;
+  if (json === null) {
+    // Encrypted data we cannot open right now (key store unavailable): keep a copy before any write replaces it.
+    if (raw.startsWith(ENC_V2)) {
+      try {
+        if (!localStorage.getItem(`${key}.undecryptable`)) localStorage.setItem(`${key}.undecryptable`, raw);
+      } catch {
+        /* storage full */
+      }
+    }
+    return;
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);

@@ -43,7 +43,8 @@ class Device {
 
 async function twoDevices() {
   const secrets = newVaultSecrets();
-  const r = await handleSync(env, "POST", {}, { op: "create" }, { vaultId: secrets.vaultId, token: secrets.token });
+  redis.run(["SET", `linked:${"o".repeat(32)}`, 1]);
+  const r = await handleSync(env, "POST", { authorization: `Bearer ${"o".repeat(32)}` }, { op: "create" }, { vaultId: secrets.vaultId, token: secrets.token });
   assert.equal(r.status, 200);
   return [new Device(secrets, "user-A"), new Device(secrets, "user-B")] as const;
 }

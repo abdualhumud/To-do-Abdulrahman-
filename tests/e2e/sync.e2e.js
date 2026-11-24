@@ -6,6 +6,8 @@ const path = require("path");
 
 const BASE = "http://localhost:4173/To-do-Abdulrahman-";
 const B = "http://127.0.0.1:4303";
+const T = "http://127.0.0.1:4302";
+const pushTg = (chat, text) => fetch(`${T}/__push`, { method: "POST", body: JSON.stringify({ chat, text }) });
 let failures = 0;
 const check = (name, ok, extra = "") => { if (!ok) failures++; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${extra ? "  — " + extra : ""}`); };
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST, PUT, DELETE, OPTIONS" };
@@ -47,7 +49,7 @@ const addTask = async (page, text) => {
 
 const syncNow = async (page) => {
   await page.goto(BASE + "/settings/");
-  await page.getByRole("button", { name: /Sync now/ }).click();
+  await page.locator("#sync").getByRole("button", { name: /Sync now/ }).click();
   await page.locator("#sync").getByText("Up to date").waitFor({ timeout: 15000 });
 };
 
@@ -58,6 +60,13 @@ const syncNow = async (page) => {
 
   // ── device A turns sync on ────────────────────────────────────────────────
   await register(A.page, "Phone");
+  // Vault creation is owner-only: link Telegram to the server first (proves ownership)
+  await A.page.goto(BASE + "/settings/");
+  await A.page.getByLabel("Bot server address").fill("taskflow-bot.vercel.app");
+  await A.page.getByRole("button", { name: /Connect server/ }).click();
+  const tgCode = (await A.page.locator("code", { hasText: "/link " }).first().innerText()).replace("/link", "").trim();
+  await pushTg(4242, "/start link_" + tgCode);
+  await A.page.getByText(/Connected to/).waitFor({ timeout: 15000 });
   await A.page.goto(BASE + "/settings/");
   check("sync card offers both choices", (await A.page.getByRole("button", { name: "Turn on sync" }).count()) === 1 && (await A.page.getByRole("button", { name: "Join" }).count()) === 1);
   await A.page.getByLabel("Server address", { exact: true }).fill("taskflow-bot.vercel.app");
@@ -76,6 +85,10 @@ const syncNow = async (page) => {
 
   await register(Bd.page, "Laptop");
   await Bd.page.goto(BASE + "/settings/");
+  await Bd.page.getByLabel("Server address", { exact: true }).fill("taskflow-bot.vercel.app");
+  await Bd.page.getByRole("button", { name: "Turn on sync" }).click();
+  await Bd.page.getByText(/First connect Telegram to this server/).waitFor({ timeout: 8000 });
+  check("a device that did not prove ownership cannot create a vault", true);
   await Bd.page.getByLabel("Pairing code").fill("AAAA-AAAA-AAAA");
   await Bd.page.getByLabel("Server address", { exact: true }).fill("taskflow-bot.vercel.app");
   await Bd.page.getByRole("button", { name: "Join" }).click();
@@ -137,7 +150,7 @@ const syncNow = async (page) => {
   await A2.page.getByRole("button", { name: "Turn on sync" }).waitFor({ timeout: 8000 });
   check("turning sync off keeps the local tasks", (await (async () => { await A2.page.goto(BASE + "/dashboard/"); return title(A2.page, "Water the plants").count(); })()) === 1);
   await Bd.page.goto(BASE + "/settings/");
-  await Bd.page.getByRole("button", { name: /Sync now/ }).click();
+  await Bd.page.locator("#sync").getByRole("button", { name: /Sync now/ }).click();
   await Bd.page.getByText(/no longer\)? allowed|removed from sync/).waitFor({ timeout: 10000 });
   check("device B is told the vault is gone", true);
 

@@ -152,6 +152,7 @@ export function applyRemote(
   for (const r of [...remote].sort((a, b) => compareStamps(a, b))) {
     observe(meta, r.u);
     const kind = kindOfKey(r.key);
+    if (!(KINDS as string[]).includes(kind)) continue; // a newer app version's record type: ignore, never crash the round
     const id = idOfKey(r.key);
     const list = next[FIELD[kind]];
     const idx = list.findIndex((x) => x?.id === id);

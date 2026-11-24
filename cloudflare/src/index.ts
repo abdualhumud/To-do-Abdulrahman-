@@ -37,7 +37,11 @@ export default {
     let body: unknown;
     if (request.method !== "GET" && request.method !== "HEAD") {
       const raw = await request.text();
-      body = raw && (headers["content-type"] ?? "").includes("json") ? JSON.parse(raw) : raw || undefined;
+      try {
+        body = raw && (headers["content-type"] ?? "").includes("json") ? JSON.parse(raw) : raw || undefined;
+      } catch {
+        return toResponse({ status: 400, body: { ok: false, error: "Invalid JSON" }, headers: { "Access-Control-Allow-Origin": env.appOrigin } });
+      }
     }
 
     const tested = await testRoute(env, url.pathname, body);
@@ -54,7 +58,10 @@ export default {
       body,
       host: env.testMode ? (headers["x-forwarded-host"] ?? url.host) : url.host,
       now: clockNow(env, headers),
-    }).catch((e: unknown) => ({ status: 500, body: { ok: false, error: e instanceof Error ? e.message : "Server error" } }));
+    }).catch((e: unknown) => {
+      console.error(e);
+      return { status: 500, body: { ok: false, error: "Server error" } };
+    });
     return toResponse(result ?? { status: 404, body: { ok: false } });
   },
 

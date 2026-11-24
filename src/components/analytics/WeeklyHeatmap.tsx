@@ -2,6 +2,7 @@
 
 import { useTaskStore } from "@/store/useTaskStore";
 import { useMemo } from "react";
+import { formatLocalDate } from "@/lib/utils";
 import { format, subDays, startOfWeek, addDays, eachDayOfInterval } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useT, fmtPattern } from "@/lib/i18n";
@@ -23,7 +24,7 @@ export function WeeklyHeatmap() {
       weeks.push(
         days.map((date) => {
           const dateStr = format(date, "yyyy-MM-dd");
-          const count = tasks.filter((t) => t.completed_at?.startsWith(dateStr)).length;
+          const count = tasks.filter((t) => t.completed_at && formatLocalDate(new Date(t.completed_at)) === dateStr).length;
           return { date, count };
         })
       );

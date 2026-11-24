@@ -13,9 +13,9 @@ export function SyncCard() {
   const sync = useLocalSync();
   const telegram = useTelegramConfig();
   const status = useSyncStatus();
-  const [link] = useState(() => (typeof window === "undefined" ? null : /^#join=([^|]+)\|([A-Za-z0-9-]+)$/.exec(window.location.hash)));
-  const [serverInput, setServer] = useState<string | null>(link ? decodeURIComponent(link[1]) : null);
-  const [code, setCode] = useState(link ? link[2] : "");
+  const [link] = useState(() => (typeof window === "undefined" ? null : /^#join=([A-Za-z0-9-]+)$/.exec(window.location.hash)));
+  const [serverInput, setServer] = useState<string | null>(null);
+  const [code, setCode] = useState(link ? link[1] : "");
   const server = serverInput ?? (telegram?.mode === "server" ? telegram.serverUrl : "");
   const [busy, setBusy] = useState(false);
   const [pair, setPair] = useState<{ display: string; until: number } | null>(null);
@@ -61,7 +61,7 @@ export function SyncCard() {
         <div className="space-y-1.5">
           <label htmlFor="sync-server" className="text-sm font-semibold text-base-fg">{t("Bot server address")}</label>
           <input id="sync-server" type="text" value={server} onChange={(e) => setServer(e.target.value)} className="input-base font-mono text-xs" placeholder="https://taskflow-bot.your-name.workers.dev" dir="ltr" autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-label={t("Server address")} />
-          <p className="text-xs text-secondary-fg">{t("The same address for every device (the one you use for Telegram).")}</p>
+          <p className="text-xs text-secondary-fg">{t("The same address for every device (the one you use for Telegram).")} {t("Needs Telegram connected to the same server first (it proves you own the server).")}</p>
         </div>
 
         <form
@@ -100,7 +100,7 @@ export function SyncCard() {
   }
 
   const left = pair ? Math.max(0, Math.round((pair.until - now) / 1000)) : 0;
-  const pairLink = pair ? `${window.location.origin}${window.location.pathname.replace(/\/settings\/?$/, "")}/settings/#join=${encodeURIComponent(sync.serverUrl)}|${pair.display.replace(/-/g, "")}` : "";
+  const pairLink = pair ? `${window.location.origin}${window.location.pathname.replace(/\/settings\/?$/, "")}/settings/#join=${pair.display.replace(/-/g, "")}` : "";
 
   return (
     <div className="card p-5 space-y-4" id="sync">

@@ -23,9 +23,9 @@ export async function route(name: string, c: RouteCtx): Promise<Result | null> {
   switch (name) {
     case "webhook":
       return c.method === "POST" ? handleWebhook(c.env, c.headers, c.body) : { status: 200, body: { ok: true, service: "TaskFlow Telegram bot" } };
-    case "pair": return handlePair(c.env, c.method, c.body);
+    case "pair": return handlePair(c.env, c.method, c.body, c.headers);
     case "inbox": return handleInbox(c.env, c.method, c.headers, c.body);
-    case "status": return handleStatus(c.env, c.method);
+    case "status": return handleStatus(c.env, c.method, c.headers);
     case "setup": return handleSetup(c.env, c.query, c.host);
     case "reminders": return handleReminders(c.env, c.method, c.headers, c.query, c.body, c.now, c.deps);
     case "push": return handlePush(c.env, c.method, c.headers, c.body);

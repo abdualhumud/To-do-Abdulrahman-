@@ -22,6 +22,7 @@ export function HabitCard({ habit, onEdit }: HabitCardProps) {
   // Calculate streak
   let streak = 0;
   let d = new Date();
+  if (!completed) d = subDays(d, 1); // today is still open: the streak counts from yesterday
   while (true) {
     const dateStr = format(d, "yyyy-MM-dd");
     if (habit.completions?.some((c) => c.completed_at === dateStr)) {

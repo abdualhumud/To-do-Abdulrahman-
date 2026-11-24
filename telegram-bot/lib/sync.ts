@@ -12,7 +12,7 @@
  */
 
 import { compareStamps, sha256Hex } from "./sync-shared";
-import { type Env, type Result, json, limited, missingConfig, pipeline, preflight, redis, safeEqual } from "./infra";
+import { type Env, type Result, isLinkedKey, json, limited, limitedByIp, missingConfig, pipeline, preflight, redis, safeEqual } from "./infra";
 
 const VAULT_RE = /^[A-Za-z0-9_-]{22}$/;
 const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -22,10 +22,11 @@ const LOOKUP_RE = /^[0-9a-f]{64}$/;
 
 export { compareStamps, sha256Hex };
 
-export const MAX_RECORD_CHARS = 24_000;
+export const MAX_RECORD_CHARS = 16_000;
 export const MAX_PUSH = 200;
 export const MAX_PULL = 300;
-export const MAX_ITEMS = 20_000;
+export const MAX_ITEMS = 5_000;
+const MAX_CLOCK_SKEW_MS = 24 * 3600 * 1000; // a device may not stamp edits more than a day ahead (it would become un-overwritable)
 const PAIR_TTL_S = 600;
 
 interface Record_ {
@@ -59,7 +60,7 @@ function readPush(raw: unknown): PushRecord[] {
     const o = (r ?? {}) as Record<string, unknown>;
     if (
       typeof o.key === "string" && ITEM_KEY_RE.test(o.key) &&
-      Number.isSafeInteger(o.u) && (o.u as number) > 0 &&
+      Number.isSafeInteger(o.u) && (o.u as number) > 0 && (o.u as number) < Date.now() + MAX_CLOCK_SKEW_MS &&
       typeof o.dev === "string" && DEVICE_RE.test(o.dev) &&
       typeof o.c === "string" && o.c.length > 0 && o.c.length <= MAX_RECORD_CHARS
     ) {
@@ -77,10 +78,15 @@ const parseRecord = (raw: unknown): Record_ | null => {
   }
 };
 
-async function create(env: Env, body: unknown): Promise<Result> {
+async function create(env: Env, headers: Record<string, string | undefined>, body: unknown): Promise<Result> {
   const b = (body ?? {}) as { vaultId?: string; token?: string };
   if (!VAULT_RE.test(b.vaultId ?? "") || !TOKEN_RE.test(b.token ?? "")) return json(env, 400, { ok: false, error: "Invalid vault credentials" });
-  if (await limited(env, "synccreate", 10)) return json(env, 429, { ok: false, error: "Too many attempts, wait a minute" });
+  if (await limitedByIp(env, "synccreate", headers, 5, 3600)) return json(env, 429, { ok: false, error: "Too many attempts, try again later" });
+  // Only the server's owner may create vaults: the caller must present the key of a Telegram chat the owner linked.
+  const key = /^Bearer\s+([A-Za-z0-9]{32})$/.exec(headers.authorization ?? "")?.[1];
+  if (!key || !(await isLinkedKey(env, key))) {
+    return json(env, 403, { ok: false, error: "Connect Telegram to this server first (Settings → Telegram → Always-on server). That proves you own it, so strangers can't fill it with data." });
+  }
   const count = Number(((await redis(env, ["GET", "svcount"])) as string | null) ?? 0);
   if (count >= env.maxVaults) {
     return json(env, 403, { ok: false, error: `This server already hosts the maximum number of sync vaults (${env.maxVaults}). Raise MAX_VAULTS or delete an old vault.` });
@@ -147,8 +153,8 @@ async function wipe(env: Env, vault: string): Promise<Result> {
     if (keys.length === 0) break;
     await pipeline(env, [...keys.map((key) => ["DEL", k(vault, `i:${key}`)]), ...keys.map((key) => ["ZREM", k(vault, "log"), key])]);
   }
-  await redis(env, ["DEL", k(vault, "log"), k(vault, "seq"), k(vault, "auth")]);
-  await redis(env, ["INCRBY", "svcount", -1]);
+  await redis(env, ["DEL", k(vault, "log"), k(vault, "seq")]);
+  if (Number(await redis(env, ["DEL", k(vault, "auth")])) === 1) await redis(env, ["INCRBY", "svcount", -1]); // only the call that really removed it counts
   return json(env, 200, { ok: true });
 }
 
@@ -165,11 +171,11 @@ export async function handleSync(
   if (problem) return json(env, 503, { ok: false, error: problem });
   const op = query.op ?? "exchange";
 
-  if (op === "create") return method === "POST" ? create(env, body) : json(env, 405, { ok: false });
+  if (op === "create") return method === "POST" ? create(env, headers, body) : json(env, 405, { ok: false });
 
   if (op === "join") {
     if (method !== "POST") return json(env, 405, { ok: false });
-    if (await limited(env, "syncjoin", 30)) return json(env, 429, { ok: false, error: "Too many attempts, wait a minute" });
+    if (await limitedByIp(env, "syncjoin", headers, 15)) return json(env, 429, { ok: false, error: "Too many attempts, wait a minute" });
     const lookup = String((body as { lookup?: string } | null)?.lookup ?? "");
     if (!LOOKUP_RE.test(lookup)) return json(env, 400, { ok: false, error: "Invalid code" });
     const wrapped = (await redis(env, ["GETDEL", `syncpair:${lookup}`])) as string | null; // single use

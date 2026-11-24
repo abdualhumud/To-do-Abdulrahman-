@@ -17,8 +17,10 @@ import {
   type Result,
   KEY_ALPHABET,
   KEY_RE,
+  isLinkedKey,
   json,
   limited,
+  limitedByIp,
   missingConfig,
   pipeline,
   preflight,
@@ -106,7 +108,9 @@ export interface SyncSummary {
 
 export async function syncItems(env: Env, key: string, body: unknown, now: number): Promise<SyncSummary> {
   const b = (body ?? {}) as { items?: unknown; tz?: unknown; appUrl?: unknown };
-  const items = validateItems(b.items, now, b.tz, b.appUrl);
+  // Only our own site's address may be embedded in messages (no attacker-chosen links in mail sent from the owner's sender).
+  const appUrl = typeof b.appUrl === "string" && (env.appOrigin === "*" || b.appUrl.startsWith(env.appOrigin)) ? b.appUrl : "";
+  const items = validateItems(b.items, now, b.tz, appUrl);
 
   const [remIds, calIds, stateFlat] = (await pipeline(env, [
     ["HKEYS", `rem:${key}`],
@@ -216,7 +220,7 @@ async function deliver(env: Env, key: string, item: StoredItem, fireAt: number, 
       const flat = ((await redis(env, ["HGETALL", `push:${key}`])) as string[] | null) ?? [];
       if (flat.length === 0) throw new Error("No phone is registered for notifications");
       const vapid = await getVapid(env);
-      const subject = env.emailTo ? `mailto:${env.emailTo}` : "mailto:taskflow@example.com";
+      const subject = env.appOrigin.startsWith("https://") ? env.appOrigin : "mailto:taskflow@example.com"; // never expose the owner's address to push services
       const send = deps.sendPush ?? ((sub, payload, vapid, subject) => sendWebPush(sub, payload, vapid, subject));
       const payload = JSON.stringify({ title, body: `${formatZoned(fireAt, item.tz)}${item.description ? `\n${item.description}` : ""}`, tag: item.id, url: item.appUrl });
       let delivered = 0;
@@ -293,6 +297,26 @@ function bearerKey(headers: Record<string, string | undefined>): string | null {
   return m && KEY_RE.test(m[1]) ? m[1] : null;
 }
 
+/** Push services we deliver to. Anything else would let a caller make this server POST to arbitrary hosts. */
+const PUSH_HOSTS = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[\w-]+\.push\.services\.mozilla\.com|[\w.-]+\.push\.apple\.com|[\w.-]+\.notify\.windows\.com)$/;
+export function pushEndpointAllowed(url: string, testMode: boolean): boolean {
+  if (testMode && /^http:\/\/127\.0\.0\.1:\d+\/\S*$/.test(url)) return true;
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && !u.username && !u.password && !u.port && PUSH_HOSTS.test(u.hostname) && url.length <= 500;
+  } catch {
+    return false;
+  }
+}
+
+/** Authenticates the caller: a well-formed key whose Telegram chat was linked by the owner. */
+async function authorize(env: Env, headers: Record<string, string | undefined>): Promise<{ key: string } | Result> {
+  const key = bearerKey(headers);
+  if (!key) return json(env, 401, { ok: false, error: "Missing or malformed key" });
+  if (!(await isLinkedKey(env, key))) return json(env, 401, { ok: false, error: "This key is not linked. Connect Telegram in TaskFlow → Settings first." });
+  return { key };
+}
+
 /** PUT = sync dated tasks; POST ?test=<channel> = send a test message. */
 export async function handleReminders(
   env: Env,
@@ -306,9 +330,10 @@ export async function handleReminders(
   if (method === "OPTIONS") return preflight(env);
   const problem = missingConfig(env);
   if (problem) return json(env, 503, { ok: false, error: problem });
-  const key = bearerKey(headers);
-  if (!key) return json(env, 401, { ok: false, error: "Missing or malformed key" });
-  if (await limited(env, `rem:${key.slice(0, 8)}`, 120)) return json(env, 429, { ok: false, error: "Too many requests" });
+  if (await limitedByIp(env, "rem", headers, 120)) return json(env, 429, { ok: false, error: "Too many requests" });
+  const auth = await authorize(env, headers);
+  if (!("key" in auth)) return auth;
+  const key = auth.key;
 
   if (method === "PUT") {
     try {
@@ -318,6 +343,7 @@ export async function handleReminders(
     }
   }
   if (method === "POST" && CHANNELS.includes(query.test as Channel)) {
+    if (await limited(env, `test:${query.test}`, 5, 3600)) return json(env, 429, { ok: false, error: "Test messages are limited to 5 per hour" });
     const d = await sendTest(env, key, query.test as Channel, now, deps);
     return json(env, 200, { ok: true, delivered: d.ok, channel: d.channel, detail: d.detail });
   }
@@ -334,13 +360,14 @@ export async function handlePush(
   if (method === "OPTIONS") return preflight(env);
   const problem = missingConfig(env);
   if (problem) return json(env, 503, { ok: false, error: problem });
-  const key = bearerKey(headers);
-  if (!key) return json(env, 401, { ok: false, error: "Missing or malformed key" });
+  if (await limitedByIp(env, "push", headers, 60)) return json(env, 429, { ok: false, error: "Too many requests" });
+  const auth = await authorize(env, headers);
+  if (!("key" in auth)) return auth;
+  const key = auth.key;
 
   if (method === "POST") {
     const sub = (body as { subscription?: PushSubscription } | null)?.subscription;
-    const endpointOk = (url: string) => /^https:\/\/\S{10,500}$/.test(url) || (env.testMode && /^http:\/\/127\.0\.0\.1:\d+\/\S*$/.test(url));
-    const valid = sub && endpointOk(sub.endpoint ?? "") && sub.keys?.p256dh && sub.keys?.auth;
+    const valid = sub && pushEndpointAllowed(sub.endpoint ?? "", env.testMode) && sub.keys?.p256dh && sub.keys?.auth;
     if (!valid) return json(env, 400, { ok: false, error: "Invalid subscription" });
     const count = Number(await redis(env, ["HLEN", `push:${key}`]));
     if (count >= MAX_DEVICES) return json(env, 400, { ok: false, error: "Too many devices" });
@@ -377,8 +404,10 @@ export async function handleCron(
 export async function handleFeedCreate(env: Env, headers: Record<string, string | undefined>, host: string): Promise<Result> {
   const problem = missingConfig(env);
   if (problem) return json(env, 503, { ok: false, error: problem });
-  const key = bearerKey(headers);
-  if (!key) return json(env, 401, { ok: false, error: "Missing or malformed key" });
+  if (await limitedByIp(env, "feedmk", headers, 30)) return json(env, 429, { ok: false, error: "Too many requests" });
+  const auth = await authorize(env, headers);
+  if (!("key" in auth)) return auth;
+  const key = auth.key;
   let fk = (await redis(env, ["GET", `feedof:${key}`])) as string | null;
   if (!fk) {
     fk = random(KEY_ALPHABET, 32);

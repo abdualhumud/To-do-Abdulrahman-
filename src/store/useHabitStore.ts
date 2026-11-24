@@ -25,8 +25,8 @@ function now() {
   return new Date().toISOString();
 }
 
-function sevenDaysAgo() {
-  return formatLocalDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+function daysAgo(n: number) {
+  return formatLocalDate(new Date(Date.now() - n * 24 * 60 * 60 * 1000));
 }
 
 export const useHabitStore = create<HabitStore>((set, get) => ({
@@ -35,13 +35,13 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
 
   fetchHabits: async () => {
     set({ isLoading: true });
-    const cutoff = sevenDaysAgo();
+    const cutoff = daysAgo(400); // long enough for real streaks
     await hydrateLocalStore();
     // Read the cache in the same tick as set() so a concurrent write can't be overwritten
     const allHabits: Habit[] = localHabits.get();
     const allCompletions: HabitCompletion[] = localCompletions.get();
 
-    // Attach recent completions to each habit (last 7 days)
+    // Attach recent completions to each habit
     const habits = allHabits.map((h) => ({
       ...h,
       completions: allCompletions.filter(
@@ -96,12 +96,11 @@ export const useHabitStore = create<HabitStore>((set, get) => ({
     if (!user) return;
 
     const completions: HabitCompletion[] = localCompletions.get();
-    const existing = completions.find(
-      (c) => c.habit_id === habitId && c.completed_at === date
-    );
+    const isMatch = (c: HabitCompletion) => c.habit_id === habitId && c.completed_at === date;
 
-    if (existing) {
-      localCompletions.set(completions.filter((c) => c !== existing));
+    if (completions.some(isMatch)) {
+      // remove every match: two synced devices may each have ticked the same day
+      localCompletions.set(completions.filter((c) => !isMatch(c)));
     } else {
       localCompletions.set([
         ...completions,

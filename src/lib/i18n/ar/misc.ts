@@ -34,5 +34,8 @@ const ar: Record<string, string> = {
   English: "English",
   Arabic: "العربية",
   "Choose the language of the app. Dates and layout follow it.": "اختر لغة التطبيق. تتبعها التواريخ واتجاه الصفحة.",
+  "The server returned an invalid calendar address": "أرجع الخادم عنوان تقويم غير صالح",
+  "First connect Telegram to this server (Settings → Telegram → Always-on server). That proves you own it.": "اربط تيليجرام بهذا الخادم أولًا (الإعدادات ← تيليجرام ← الخادم الدائم). هذا يثبت أنك مالكه.",
+  "Needs Telegram connected to the same server first (it proves you own the server).": "يتطلب ربط تيليجرام بنفس الخادم أولًا (يثبت أنك مالك الخادم).",
 };
 export default ar;

@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import {
   DEFAULT_PREFS,
   getStoreVersion,
+  isHydrated,
   localPrefs,
   localSync,
   localTelegram,
@@ -22,7 +23,7 @@ function useVersion(): number {
 /** `ready` is false on the server and until the store has been decrypted into memory. */
 export function useLocalUser(): { ready: boolean; user: LocalUser | null } {
   const version = useVersion();
-  const ready = version > 0;
+  const ready = version > 0 && isHydrated();
   return { ready, user: ready ? localUser.get() : null };
 }
 

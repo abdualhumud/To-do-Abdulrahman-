@@ -14,7 +14,7 @@ import {
   PAIR_TTL_S,
   hasStorage,
   json,
-  limited,
+  limitedByIp,
   missingConfig,
   preflight,
   random,
@@ -50,6 +50,13 @@ interface TgMessage {
   text?: string;
 }
 
+/** Single-owner server: only one Telegram chat may ever link (OWNER_CHAT_ID, or the first chat to link). */
+async function claimOwner(env: Env, chatId: number): Promise<boolean> {
+  if (env.ownerChatId) return chatId === env.ownerChatId;
+  await redis(env, ["SET", "ownerchat", chatId, "NX"]);
+  return Number(await redis(env, ["GET", "ownerchat"])) === chatId;
+}
+
 async function onMessage(env: Env, msg: TgMessage): Promise<void> {
   if (msg.chat.type !== "private" || !msg.from || msg.from.is_bot) return;
   const chatId = msg.chat.id;
@@ -61,6 +68,10 @@ async function onMessage(env: Env, msg: TgMessage): Promise<void> {
     const code = extractCode(text);
     const key = code ? ((await redis(env, ["GETDEL", `pair:${code}`])) as string | null) : null;
     if (key) {
+      if (!(await claimOwner(env, chatId))) {
+        await say(env, chatId, "🔒 This bot is private to its owner.");
+        return;
+      }
       await redis(env, ["SET", `chat:${chatId}`, key]);
       await redis(env, ["SET", `linked:${key}`, chatId]);
       await say(env, chatId, "✅ Linked. Send me anything and it becomes a task in TaskFlow — even when the app is closed.");
@@ -72,6 +83,7 @@ async function onMessage(env: Env, msg: TgMessage): Promise<void> {
 
   // A linked chat can re-link (app reconnected / new browser). A bare 8-letter word is only
   // treated as a code if it really is a live pairing code, otherwise it is an ordinary task.
+  await redis(env, ["SET", "ownerchat", chatId, "NX"]); // servers linked before owner-locking existed: the chat already in use is the owner
   const relinkCode = extractCode(text);
   const newKey = relinkCode ? ((await redis(env, ["GETDEL", `pair:${relinkCode}`])) as string | null) : null;
   if (newKey) {
@@ -125,13 +137,13 @@ export async function handleWebhook(env: Env, headers: Record<string, string | u
 // ─── App endpoints ────────────────────────────────────────────────────────────
 
 /** POST /api/pair {previousCode?} → { code, inboxKey, bot } — the app then asks the user to send /link CODE. */
-export async function handlePair(env: Env, method: string, body?: unknown): Promise<Result> {
+export async function handlePair(env: Env, method: string, body?: unknown, headers: Record<string, string | undefined> = {}): Promise<Result> {
   if (method === "OPTIONS") return preflight(env);
   if (method !== "POST") return json(env, 405, { ok: false });
   const problem = missingConfig(env);
   if (problem) return json(env, 503, { ok: false, error: problem });
 
-  if (await limited(env, "pair", 30)) return json(env, 429, { ok: false, error: "Too many attempts, wait a minute" });
+  if (await limitedByIp(env, "pair", headers, 10)) return json(env, 429, { ok: false, error: "Too many attempts, wait a minute" });
 
   const previous = String((body as { previousCode?: string } | null)?.previousCode ?? "").toUpperCase();
   if (/^[A-Z0-9]{6,12}$/.test(previous)) await redis(env, ["DEL", `pair:${previous}`]); // "New code" revokes the old one
@@ -184,12 +196,12 @@ export async function handleInbox(
 }
 
 /** Public, secret-free health report: used by the app's "Check connection". */
-export async function handleStatus(env: Env, method: string): Promise<Result> {
+export async function handleStatus(env: Env, method: string, headers: Record<string, string | undefined> = {}): Promise<Result> {
   if (method === "OPTIONS") return preflight(env);
   // Public endpoint that calls Telegram: bound the cost of abuse (only when Redis is available to count).
   if (hasStorage(env)) {
     try {
-      if (await limited(env, "status", 60)) return json(env, 429, { ok: false, error: "Too many requests, wait a minute" });
+      if (await limitedByIp(env, "status", headers, 30)) return json(env, 429, { ok: false, error: "Too many requests, wait a minute" });
     } catch {
       /* Redis down: still report below */
     }

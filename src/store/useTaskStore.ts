@@ -120,10 +120,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   updateTask: async (id, updates, tagIds) => {
     const allTags: Tag[] = localTags.get();
-    const tasks = get().tasks.map((t) => {
+    const tasks = (localTasks.get() as Task[]).map((t) => {
       if (t.id !== id) return t;
       const tags = tagIds !== undefined ? allTags.filter((tg) => tagIds.includes(tg.id)) : t.tags;
-      return { ...t, ...updates, tags, updated_at: now() };
+      const next = { ...t, ...updates, tags, updated_at: now() };
+      // keep completed_at consistent when the status is changed from the edit form
+      if (updates.status !== undefined && updates.completed_at === undefined) {
+        next.completed_at = updates.status === "completed" ? (t.completed_at ?? now()) : null;
+      }
+      return next;
     });
     localTasks.set(tasks);
     set({ tasks });

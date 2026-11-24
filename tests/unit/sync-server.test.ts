@@ -41,12 +41,16 @@ const ok = async (p: ReturnType<typeof call>): Promise<Reply> => {
   assert.equal(r.status, 200, JSON.stringify(r.body));
   return r.body as Reply;
 };
-const make = (v = VAULT, t = TOKEN) => handleSync(env, "POST", {}, { op: "create" }, { vaultId: v, token: t });
+const OWNER_KEY = "o".repeat(32);
+const make = (v = VAULT, t = TOKEN) => {
+  redis.run(["SET", `linked:${OWNER_KEY}`, 1]); // the owner's linked Telegram key authorises creating vaults
+  return handleSync(env, "POST", { authorization: `Bearer ${OWNER_KEY}` }, { op: "create" }, { vaultId: v, token: t });
+};
 const rec = (key: string, u: number, dev: string, c = "Y2lwaGVydGV4dA") => ({ key, u, dev, c });
 const exchange = (dev: string, since: number, push: unknown[] = [], v = VAULT, t = TOKEN) => ok(call("exchange", "POST", { dev, since, push }, auth(v, t)));
 
 test("creating a vault validates credentials, refuses duplicates and respects the server cap", async () => {
-  assert.equal((await handleSync(env, "POST", {}, { op: "create" }, { vaultId: "short", token: TOKEN })).status, 400);
+  assert.equal((await handleSync(env, "POST", { authorization: `Bearer ${OWNER_KEY}` }, { op: "create" }, { vaultId: "short", token: TOKEN })).status, 400);
   assert.equal((await make()).status, 200);
   assert.equal((await make()).status, 409);
   assert.equal((await make(OTHER_VAULT, OTHER_TOKEN)).status, 200);
@@ -196,4 +200,21 @@ test("a server without storage reports the problem instead of failing silently",
   const bare = readEnv({});
   assert.equal((await handleSync(bare, "POST", {}, { op: "create" }, {})).status, 503);
   assert.equal((await handleSync(env, "OPTIONS", {}, {}, undefined)).status, 204);
+});
+
+test("strangers cannot create vaults, and the day-ahead clock limit protects items", async () => {
+  const stranger = await handleSync(env, "POST", { authorization: `Bearer ${"s".repeat(32)}` }, { op: "create" }, { vaultId: VAULT, token: TOKEN });
+  assert.equal(stranger.status, 403);
+  assert.equal((await handleSync(env, "POST", {}, { op: "create" }, { vaultId: VAULT, token: TOKEN })).status, 403);
+  await make();
+  const far = Date.now() + 3 * 24 * 3600 * 1000;
+  const r = await exchange("aaaa", 0, [rec("task:far", far, "aaaa"), rec("task:ok", 1000, "aaaa")]);
+  assert.deepEqual(r.accepted, ["task:ok"]);
+});
+
+test("deleting twice never drives the vault counter below zero", async () => {
+  await make();
+  assert.equal((await call("delete", "DELETE")).status, 200);
+  assert.equal((await call("delete", "DELETE")).status, 401);
+  assert.equal(Number(redis.run(["GET", "svcount"])), 0);
 });

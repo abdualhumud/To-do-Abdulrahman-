@@ -17,7 +17,7 @@ export function buildCsp(extraOrigins: string = ""): string {
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https://avatars.githubusercontent.com https://lh3.googleusercontent.com",
+    "img-src 'self' data:",
     "font-src 'self'",
     `connect-src ${[...new Set(connect)].join(" ")}`,
     "object-src 'none'",

@@ -13,6 +13,10 @@ import {
 } from "recharts";
 import { format, subDays } from "date-fns";
 import { useT, useLang, fmtPattern } from "@/lib/i18n";
+import { formatLocalDate } from "@/lib/utils";
+
+/** Stored instants are UTC ISO strings; charts bucket by the user's LOCAL day. */
+const localDay = (iso: string): string => formatLocalDate(new Date(iso));
 
 export function ProductivityChart() {
   const t = useT();
@@ -23,11 +27,8 @@ export function ProductivityChart() {
     return Array.from({ length: 7 }, (_, i) => {
       const date = subDays(new Date(), 6 - i);
       const dateStr = format(date, "yyyy-MM-dd");
-      const completed = tasks.filter((t) => {
-        if (!t.completed_at) return false;
-        return t.completed_at.startsWith(dateStr);
-      }).length;
-      const created = tasks.filter((t) => t.created_at.startsWith(dateStr)).length;
+      const completed = tasks.filter((t) => t.completed_at && localDay(t.completed_at) === dateStr).length;
+      const created = tasks.filter((t) => t.created_at && localDay(t.created_at) === dateStr).length;
       return { day: fmtPattern(date, "EEE", lang), completed, created };
     });
   }, [tasks, lang]);

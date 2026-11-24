@@ -275,6 +275,14 @@ Settings → Export/Import (`src/lib/backup.ts`): JSON with tasks/tags/habits/co
 - No wildcard `remotePatterns`. Sign-out asks for confirmation (it clears the profile, not tasks).
 - A capture link can add tasks (≤100 per link, text only, rendered escaped by React). That is
   the price of one-tap Shortcuts; nothing is read or deleted by links.
+- **Server hardening (audited)**: the server is single-owner. The first Telegram chat that links (or `OWNER_CHAT_ID`) is the owner;
+  other chats are refused. Reminders/push/feed/sync-create all require a key whose chat was **linked** (`isLinkedKey`), because
+  `/api/pair` is public and hands out keys. Vault creation needs the linked inbox key as Bearer. Rate limits are per client
+  (`limitedByIp`, from `cf-connecting-ip`, never X-Forwarded-For) plus a large global backstop; test messages 5/hour. Push
+  endpoints must be on an allowlist of push-service hosts (SSRF), fetched with a timeout and no redirects; VAPID subject is the site
+  origin (never the owner's email); `appUrl` in messages must start with `APP_ORIGIN`. Sync stamps may not be >1 day ahead.
+  Deploy note: servers linked before the owner lock claim ownership for the chat that messages the bot first — set `OWNER_CHAT_ID`
+  to pin it. Join links carry only the code (never the server address). Undecryptable local data is copied to `<key>.undecryptable`.
 - Never paste PATs/bot tokens into chats — rotate any that were.
 
 ## How to verify (do this, don't trust the type checker)

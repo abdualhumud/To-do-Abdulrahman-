@@ -33,6 +33,8 @@ export interface Env {
   testMode: boolean;
   /** How many sync vaults this server will host (each person/household is one vault). */
   maxVaults: number;
+  /** Optional: the only Telegram chat id allowed to use this server (otherwise the first chat that links becomes the owner). */
+  ownerChatId: number;
 }
 
 export function readEnv(source: Record<string, string | undefined> = process.env): Env {
@@ -50,6 +52,7 @@ export function readEnv(source: Record<string, string | undefined> = process.env
     resendBase: source.RESEND_API_BASE ?? "https://api.resend.com",
     testMode: source.ALLOW_TEST_CLOCK === "1",
     maxVaults: Math.max(1, Number(source.MAX_VAULTS) || 5),
+    ownerChatId: Number(source.OWNER_CHAT_ID) || 0,
   };
 }
 
@@ -135,11 +138,28 @@ export function safeEqual(a: string, b: string): boolean {
 }
 
 /** Fixed-window limiter in Redis; returns true when the call should be refused. */
-export async function limited(env: Env, bucket: string, max: number): Promise<boolean> {
-  const key = `rate:${bucket}:${Math.floor(Date.now() / 60_000)}`;
+export async function limited(env: Env, bucket: string, max: number, windowS = 60): Promise<boolean> {
+  const key = `rate:${bucket}:${Math.floor(Date.now() / (windowS * 1000))}`;
   const used = Number(await redis(env, ["INCR", key]));
-  if (used === 1) await redis(env, ["EXPIRE", key, 120]);
+  if (used === 1) await redis(env, ["EXPIRE", key, windowS * 2]);
   return used > max;
+}
+
+/** The caller's address as set by the platform (Cloudflare / Vercel) — never a client-supplied X-Forwarded-For. */
+export function clientIp(headers: Record<string, string | undefined>): string {
+  const ip = headers["cf-connecting-ip"] ?? headers["x-vercel-forwarded-for"] ?? headers["x-real-ip"] ?? "";
+  return /^[0-9a-fA-F:.]{3,45}$/.test(ip) ? ip : "unknown";
+}
+
+/** Per-client limit (so one abuser cannot lock everyone out) plus a much larger global backstop. */
+export async function limitedByIp(env: Env, bucket: string, headers: Record<string, string | undefined>, perIp: number, windowS = 60): Promise<boolean> {
+  if (await limited(env, `${bucket}:ip:${clientIp(headers)}`, perIp, windowS)) return true;
+  return limited(env, `${bucket}:all`, perIp * 20, windowS);
+}
+
+/** A key may use account features only after its Telegram chat has been linked (which only the owner can do). */
+export async function isLinkedKey(env: Env, key: string): Promise<boolean> {
+  return Number(await redis(env, ["EXISTS", `linked:${key}`])) === 1;
 }
 
 export function cors(env: Env): Record<string, string> {

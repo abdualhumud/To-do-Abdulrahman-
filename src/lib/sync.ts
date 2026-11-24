@@ -25,7 +25,7 @@ import {
   type LocalSync,
 } from "@/lib/local-store";
 import { refreshStores } from "@/lib/refresh";
-import { getSyncStatus, setSyncStatus } from "@/lib/sync-status";
+import { getSyncStatus, setSyncStatus, subscribeSyncStatus } from "@/lib/sync-status";
 import { isClean, type Item, type Kind, type LocalData, type SyncMeta } from "@/lib/sync-core";
 import { DecryptError, formatCode, importVaultKey, isCompleteCode, newDeviceId, newPairCode, newVaultSecrets, normalizeCode, pairLookup, unwrapFromPairing, wrapForPairing } from "@/lib/sync-crypto";
 import { syncOnce, type ExchangeRequest, type ExchangeResponse, type Host, type Transport } from "@/lib/sync-engine";
@@ -53,12 +53,12 @@ export function normalizeServer(raw: string): string {
   return url.origin;
 }
 
-async function call<T>(base: string, op: string, method: string, body?: unknown, auth?: { vaultId: string; token: string }): Promise<T> {
+async function call<T>(base: string, op: string, method: string, body?: unknown, auth?: { vaultId: string; token: string }, bearer?: string): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${base}/api/sync?op=${op}`, {
       method,
-      headers: { ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...(auth ? { Authorization: `Bearer ${auth.vaultId}.${auth.token}` } : {}) },
+      headers: { ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...(auth ? { Authorization: `Bearer ${auth.vaultId}.${auth.token}` } : bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -112,7 +112,12 @@ export async function enableSync(rawServer: string): Promise<void> {
   if (localSync.get()) throw new SyncError(tr("Sync is already on for this device."));
   const base = normalizeServer(rawServer);
   const secrets = newVaultSecrets();
-  await call(base, "create", "POST", { vaultId: secrets.vaultId, token: secrets.token });
+  // The server only lets its owner create vaults: prove it with the linked Telegram connection to that same server.
+  const tg = localTelegram.get();
+  if (!tg || tg.mode !== "server" || tg.serverUrl !== base || tg.pairCode !== null) {
+    throw new SyncError(tr("First connect Telegram to this server (Settings → Telegram → Always-on server). That proves you own it."));
+  }
+  await call(base, "create", "POST", { vaultId: secrets.vaultId, token: secrets.token }, undefined, tg.inboxKey);
   store(base, secrets);
   await flushLocalStore(); // the credentials must be on disk before anything else can go wrong
   await syncNow();
@@ -152,7 +157,7 @@ export async function createPairCode(): Promise<{ code: string; display: string;
     token: s.token,
     key: s.key,
     serverUrl: s.serverUrl,
-    ...(tg?.mode === "server" && tg.chatId !== null && tg.serverUrl === s.serverUrl ? { inboxKey: tg.inboxKey, bot: tg.botUsername } : {}),
+    ...(tg?.mode === "server" && tg.pairCode === null && tg.serverUrl === s.serverUrl ? { inboxKey: tg.inboxKey, bot: tg.botUsername } : {}),
   });
   await call(s.serverUrl, "pair", "POST", { lookup: await pairLookup(code), wrapped }, s);
   return { code, display: formatCode(code), serverUrl: s.serverUrl };
@@ -253,6 +258,12 @@ export function startSyncRuntime(): () => void {
     timer = setTimeout(run, PUSH_DEBOUNCE_MS);
   };
   const interval = setInterval(run, POLL_MS);
+  let wasSyncing = false;
+  const unsubStatus = subscribeSyncStatus(() => {
+    const now = getSyncStatus().syncing;
+    if (wasSyncing && !now) soon(); // an edit made during the round is pushed right after it, not 20 s later
+    wasSyncing = now;
+  });
   const unsub = subscribeStore(soon);
   const resume = ["focus", "pageshow", "online"] as const;
   resume.forEach((n) => window.addEventListener(n, run));
@@ -262,6 +273,7 @@ export function startSyncRuntime(): () => void {
     clearTimeout(timer);
     clearInterval(interval);
     unsub();
+    unsubStatus();
     resume.forEach((n) => window.removeEventListener(n, run));
     document.removeEventListener("visibilitychange", run);
   };

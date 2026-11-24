@@ -1,5 +1,5 @@
 // Runs the real telegram-bot handlers in-process against fakes of Upstash Redis (REST) and the Telegram Bot API.
-import { test, before } from "node:test";
+import { test, before, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { handleInbox, handlePair, handleSetup, handleStatus, handleWebhook, readEnv } from "../../telegram-bot/lib/core.ts";
 import { FakeRedis, FakeTelegram } from "./helpers/fakes.ts";
@@ -34,6 +34,8 @@ before(() => {
   }) as typeof fetch;
 });
 
+beforeEach(() => { redis.run(["DEL", "ownerchat"]); }); // each test models a fresh server owner
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 let updateId = 1;
 const push = (chat: number, text: string, secret = SECRET) =>
@@ -41,8 +43,10 @@ const push = (chat: number, text: string, secret = SECRET) =>
     update_id: updateId++,
     message: { from: { id: chat, is_bot: false }, chat: { id: chat, type: "private" }, text },
   });
+let ipSeq = 0; // each call comes from a different address, so the per-IP limiter does not interfere
+const fresh = () => ({ "cf-connecting-ip": `10.0.${Math.floor(++ipSeq / 250)}.${ipSeq % 250}` });
 const pair = async (previousCode?: string) =>
-  (await handlePair(env, "POST", previousCode ? { previousCode } : undefined)).body as { code: string; inboxKey: string; bot: string };
+  (await handlePair(env, "POST", previousCode ? { previousCode } : undefined, fresh())).body as { code: string; inboxKey: string; bot: string };
 const box = async (key: string) => (await handleInbox(env, "GET", { authorization: `Bearer ${key}` }, undefined)).body as { linked: boolean; count: number; items: { text: string }[] };
 const said = (chat: number, re: RegExp) => sent.some((m) => m.chat === chat && re.test(m.text));
 
@@ -177,4 +181,26 @@ test("pairing is rate limited", async () => {
   let limited = 0;
   for (let i = 0; i < 40; i++) if ((await handlePair(env, "POST")).status === 429) limited++;
   assert.ok(limited > 0);
+});
+
+test("single-owner lock: once one chat has linked, a stranger's pairing code is refused", async () => {
+  const mine = await pair();
+  await push(810, "/link " + mine.code);
+  assert.equal((await box(mine.inboxKey)).linked, true);
+  const theirs = await pair();
+  await push(811, "/link " + theirs.code);
+  assert.ok(said(811, /private/));
+  assert.equal((await box(theirs.inboxKey)).linked, false);
+  // the owner can still re-link
+  const again = await pair();
+  await push(810, "/link " + again.code);
+  assert.equal((await box(again.inboxKey)).linked, true);
+});
+
+test("OWNER_CHAT_ID pins the server to one chat from the start", async () => {
+  const pinned = { ...env, ownerChatId: 820 };
+  const p = await handlePair(pinned, "POST", {}, fresh());
+  const { code } = p.body as { code: string };
+  await handleWebhook(pinned, { "x-telegram-bot-api-secret-token": SECRET }, { update_id: updateId++, message: { message_id: 1, from: { id: 821 }, chat: { id: 821, type: "private" }, text: "/link " + code } });
+  assert.ok(said(821, /private/));
 });
