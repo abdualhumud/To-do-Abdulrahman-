@@ -11,6 +11,8 @@
 import { useSyncExternalStore } from "react";
 import { localPrefs, type LocalTelegram } from "@/lib/local-store";
 import { server } from "@/lib/telegram";
+import { hasUnsyncedChanges, isSyncEnabled } from "@/lib/sync";
+import { getSyncStatus, subscribeSyncStatus } from "@/lib/sync-status";
 import { useTaskStore } from "@/store/useTaskStore";
 import type { Task } from "@/types";
 import { deviceTimeZone, appDashboardUrl, serverConfig } from "@/lib/reminder-fields";
@@ -90,6 +92,9 @@ export function authHeader(cfg: LocalTelegram): Record<string, string> {
 export async function syncReminders(force = false): Promise<SyncSummary | null> {
   const cfg = serverConfig();
   if (!cfg || !localPrefs.get().syncToServer) return null;
+  // With multi-device sync on, this list is only complete once this device is up to date — otherwise
+  // the replace-all copy would drop tasks another device has just added.
+  if (isSyncEnabled() && (!getSyncStatus().current || hasUnsyncedChanges())) return null;
   const payload = JSON.stringify({ tz: deviceTimeZone(), appUrl: appDashboardUrl(), items: buildItems(useTaskStore.getState().tasks) });
   if (!force && payload === lastPayload) return syncState.summary;
   try {
@@ -133,7 +138,7 @@ export function startReminderSync(subscribeStore: (cb: () => void) => () => void
     clearTimeout(timer);
     timer = setTimeout(() => void syncReminders(), 1500);
   };
-  const unsubs = [useTaskStore.subscribe(schedule), subscribeStore(schedule)];
+  const unsubs = [useTaskStore.subscribe(schedule), subscribeStore(schedule), subscribeSyncStatus(schedule)];
   window.addEventListener("online", schedule);
   schedule();
   return () => {

@@ -5,10 +5,12 @@ import {
   DEFAULT_PREFS,
   getStoreVersion,
   localPrefs,
+  localSync,
   localTelegram,
   localUser,
   subscribeStore,
   type LocalPrefs,
+  type LocalSync,
   type LocalTelegram,
   type LocalUser,
 } from "@/lib/local-store";
@@ -32,4 +34,9 @@ export function useTelegramConfig(): LocalTelegram | null {
 export function usePrefs(): LocalPrefs {
   const version = useVersion();
   return version > 0 ? localPrefs.get() : DEFAULT_PREFS;
+}
+
+export function useLocalSync(): LocalSync | null {
+  const version = useVersion();
+  return version > 0 ? localSync.get() : null;
 }

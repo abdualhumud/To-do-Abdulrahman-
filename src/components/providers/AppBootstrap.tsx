@@ -6,8 +6,8 @@ import { onExternalChange } from "@/lib/local-store";
 import { useTelegramConfig } from "@/lib/use-local-store";
 import { processCaptureRequest } from "@/lib/capture";
 import { isLinked, pollTelegram } from "@/lib/telegram";
-import { useTaskStore } from "@/store/useTaskStore";
-import { useHabitStore } from "@/store/useHabitStore";
+import { refreshStores } from "@/lib/refresh";
+import { startSyncRuntime } from "@/lib/sync";
 import { ReminderRuntime } from "@/components/providers/ReminderRuntime";
 
 const PAIRING_POLL_MS = 4_000;
@@ -17,13 +17,8 @@ const SYNC_POLL_MS = 30_000;
 export function AppBootstrap() {
   // Load data once, and again whenever another tab changes it.
   useEffect(() => {
-    const refresh = () => {
-      void useTaskStore.getState().fetchTasks();
-      void useTaskStore.getState().fetchTags();
-      void useHabitStore.getState().fetchHabits();
-    };
-    refresh();
-    return onExternalChange(refresh);
+    refreshStores();
+    return onExternalChange(refreshStores);
   }, []);
 
   // Tasks added through a link (Apple Shortcuts, Notes, bookmarklet, Siri…).
@@ -38,6 +33,7 @@ export function AppBootstrap() {
 
   return (
     <>
+      <SyncRuntime />
       <TelegramSync />
       <ReminderRuntime />
     </>
@@ -72,5 +68,10 @@ function TelegramSync() {
     };
   }, [connected, interval]);
 
+  return null;
+}
+
+function SyncRuntime() {
+  useEffect(() => startSyncRuntime(), []);
   return null;
 }

@@ -86,10 +86,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!user) return [];
 
     const base: Task[] = localTasks.get();
+    // A caller may supply a deterministic id (Telegram inbox) so two synced devices collecting the
+    // same message produce ONE task; an id that already exists is skipped.
+    const have = new Set(base.map((t) => t.id));
     const created: Task[] = items
-      .filter((item) => item.title?.trim())
+      .filter((item) => item.title?.trim() && !(item.id && have.has(item.id)))
       .map((item, i) => ({
-        id: uuid(),
+        id: item.id && /^[A-Za-z0-9_-]{1,64}$/.test(item.id) ? item.id : uuid(),
         user_id: user.id,
         title: item.title!.trim().slice(0, 1000),
         description: item.description ?? null,

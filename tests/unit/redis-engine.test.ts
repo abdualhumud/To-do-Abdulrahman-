@@ -35,6 +35,17 @@ test("keys expire lazily (SET EX, EXPIRE) and INCR keeps the TTL", () => {
   assert.equal(e.run(["EXPIRE", "missing", 5]), 0);
 });
 
+test("INCRBY (negative too) and ZCARD", () => {
+  const { e } = make();
+  assert.equal(e.run(["INCRBY", "n", 5]), 5);
+  assert.equal(e.run(["INCRBY", "n", -2]), 3);
+  assert.equal(e.run(["ZCARD", "z"]), 0);
+  e.run(["ZADD", "z", 1, "a"]);
+  e.run(["ZADD", "z", 2, "b"]);
+  e.run(["ZADD", "z", 3, "a"]);
+  assert.equal(e.run(["ZCARD", "z"]), 2);
+});
+
 test("lists: RPUSH/LRANGE/LTRIM with negative indexes; an emptied list disappears", () => {
   const { e } = make();
   e.run(["RPUSH", "l", "a", "b", "c", "d"]);

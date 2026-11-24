@@ -31,6 +31,8 @@ export interface Env {
   resendBase: string;
   /** Tests only: lets requests set the clock and use /__redis and /__reset. Never set in production. */
   testMode: boolean;
+  /** How many sync vaults this server will host (each person/household is one vault). */
+  maxVaults: number;
 }
 
 export function readEnv(source: Record<string, string | undefined> = process.env): Env {
@@ -47,6 +49,7 @@ export function readEnv(source: Record<string, string | undefined> = process.env
     emailFrom: source.EMAIL_FROM ?? "TaskFlow <onboarding@resend.dev>",
     resendBase: source.RESEND_API_BASE ?? "https://api.resend.com",
     testMode: source.ALLOW_TEST_CLOCK === "1",
+    maxVaults: Math.max(1, Number(source.MAX_VAULTS) || 5),
   };
 }
 

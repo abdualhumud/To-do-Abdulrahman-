@@ -199,6 +199,27 @@ Resend/push services (sandbox can't reach them): unit tests use fakes (`tests/un
 is tested in a `vm` sandbox, and `reminders.e2e.js` drives the whole flow with a controllable clock
 (`/__cron?shiftMinutes=` shifts `Date.now()` for one cron call; Playwright `page.clock` for in-app alerts).
 
+## Multi-device sync (vault) — `src/lib/sync*.ts`, `telegram-bot/lib/sync.ts`
+
+Opt-in (Settings → Sync across devices). Needs the bot server (Worker/Vercel); no extra account.
+- **Zero-knowledge**: each task/tag/habit/completion is one record `kind:id`, AES-256-GCM encrypted on the device with AAD
+  `key|u|dev` (`sync-crypto.ts`), so the server (which stores ciphertext + plain stamp `u` and device `dev`) can't read it,
+  move it to another item, or fake its age. The key never leaves devices except inside a pairing code.
+- **Pairing**: device A makes a 12-char code (10 min, single use); the vault secrets are wrapped with PBKDF2(code) and parked at
+  `syncpair:<sha256(code)>`; device B joins via `?op=join` (rate limited, `GETDEL`). The wrap also carries the Telegram `inboxKey`/bot.
+- **Merge** (`sync-core.ts`, pure): per item `known[key]={sig,u,dev}`; local item with a different signature is "dirty" and gets
+  a fresh hybrid-logical-clock stamp; highest `(u,dev)` wins (server enforces it too); deletes are tombstones (`{__del:true}`).
+  Remote never overwrites an unpushed local edit (clock is advanced past every stamp seen first). `sync-engine.ts` runs one
+  round (push ≤200, pull pages of 300) against any `Transport`/`Host`, so unit tests drive the real server handlers.
+- **Server layout**: `sv:V:auth` sha256(token), `sv:V:seq`, `sv:V:i:<key>`, zset `sv:V:log`, `svcount` capped by `MAX_VAULTS` (default 5).
+- **Runtime** (`sync.ts`): push ~1 s after an edit (only when something is unsynced), poll 20 s while visible, on focus/online;
+  Web Lock `tf-sync` across tabs. `user_id` is excluded from signatures and re-set per device on apply.
+- **Interplay**: reminders replace-all upload is skipped until this device is up to date (else it would drop other devices' tasks);
+  Telegram inbox tasks get deterministic ids (`tg-<hash>-<i>`) and `createTasks` skips existing ids, so two devices never duplicate.
+- **Lessons**: `sanitize()` in local-store must know every stored key or it silently drops it on reload (`tf_sync`);
+  await `flushLocalStore()` after saving credentials; e2e `getByText("Up to date")` matches other cards — scope to `#sync`.
+- Tests: `tests/unit/sync-{core,server,converge}.test.ts`, `tests/e2e/sync.e2e.js` (two browser profiles, both bot hosts).
+
 ## Backup
 
 Settings → Export/Import (`src/lib/backup.ts`): JSON with tasks/tags/habits/completions
@@ -297,5 +318,6 @@ src/
 cloudflare/                     Cloudflare Worker host: wrangler.toml, src/index.ts (fetch + cron), src/store.ts (Durable Object)
 telegram-bot/                   Host-neutral bot server (+ Vercel wrappers): api/{webhook,pair,inbox,status,setup,reminders,push,cron,feed}.ts
                                 + lib/{core,infra,routes,reminders,redis-engine,webpush,recurrence,ics}.ts (recurrence/ics are also imported by the app)
+src/lib/sync*.ts                multi-device sync (crypto, core, engine, runtime, status)
 tests/unit, tests/e2e           node:test suites (CI) and Playwright suites (manual)
 ```

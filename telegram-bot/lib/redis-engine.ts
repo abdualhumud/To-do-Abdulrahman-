@@ -108,6 +108,12 @@ export class RedisEngine {
         this.write(k, { t: "s", v: String(v), ...(e?.exp !== undefined ? { exp: e.exp } : {}) });
         return v;
       }
+      case "INCRBY": {
+        const e = this.typed(k, "s");
+        const v = Number(e?.v ?? 0) + Number(a[1]);
+        this.write(k, { t: "s", v: String(v), ...(e?.exp !== undefined ? { exp: e.exp } : {}) });
+        return v;
+      }
       case "DEL": return a.reduce<number>((n, key) => n + Number(this.entry(String(key)) !== undefined && this.remove(String(key))), 0);
       case "EXISTS": return this.entry(k) ? 1 : 0;
       case "EXPIRE": {
@@ -173,6 +179,7 @@ export class RedisEngine {
         this.write(k, { t: "z", v: { ...(e?.v ?? {}), [String(a[2])]: Number(a[1]) }, ...(e?.exp !== undefined ? { exp: e.exp } : {}) });
         return 1;
       }
+      case "ZCARD": return Object.keys(this.typed(k, "z")?.v ?? {}).length;
       case "ZREM": {
         const e = this.typed(k, "z");
         const m = String(a[1]);

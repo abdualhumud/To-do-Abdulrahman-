@@ -2,7 +2,10 @@
 
 import { useRouter, usePathname } from "next/navigation";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { Sun, Moon, LogOut, AlertTriangle, X, Search } from "lucide-react";
+import Link from "next/link";
+import { Sun, Moon, LogOut, AlertTriangle, X, Search, Cloud, CloudOff } from "lucide-react";
+import { useLocalSync } from "@/lib/use-local-store";
+import { useSyncStatus } from "@/lib/sync-status";
 import toast from "react-hot-toast";
 import { useState } from "react";
 import { localUser, type LocalUser } from "@/lib/local-store";
@@ -29,6 +32,8 @@ export function Header({ user }: HeaderProps) {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchVal, setSearchVal] = useState("");
+  const sync = useLocalSync();
+  const syncStatus = useSyncStatus();
 
   const pageTitle = Object.entries(PAGE_TITLES).find(([k]) => pathname === k || pathname.startsWith(k + "/"))?.[1] ?? "TaskFlow";
 
@@ -130,6 +135,16 @@ export function Header({ user }: HeaderProps) {
 
         {/* Right: actions */}
         <div className="flex items-center gap-1.5">
+          {sync && (
+            <Link
+              href="/settings/#sync"
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-secondary-fg hover:bg-secondary hover:text-base-fg transition-all relative"
+              title={syncStatus.error ? `Sync problem: ${syncStatus.error}` : syncStatus.current ? "Synced" : "Syncing…"}
+              aria-label={syncStatus.error ? "Sync problem" : syncStatus.current ? "Synced across devices" : "Syncing"}
+            >
+              {syncStatus.error ? <CloudOff className="w-4 h-4 text-danger" /> : <Cloud className={`w-4 h-4 ${syncStatus.syncing ? "animate-pulse" : ""}`} />}
+            </Link>
+          )}
           {/* Search toggle */}
           {!searchOpen && (
             <button

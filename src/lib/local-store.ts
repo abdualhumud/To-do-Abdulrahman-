@@ -87,6 +87,18 @@ export const CompletionSchema = z
   })
   .passthrough();
 
+export interface LocalSync {
+  serverUrl: string;
+  vaultId: string;
+  token: string;
+  /** AES key for the vault — stays on this device (and is handed to new devices only inside a pairing code). */
+  key: string;
+  dev: string;
+  clock: number;
+  cursor: number;
+  known: Record<string, { sig: string; u: number; dev: string; del?: boolean }>;
+}
+
 export interface LocalPrefs {
   /** Opt-in: keep a copy of dated open tasks on the bot server (needed for reminders when the app is closed and for the calendar feed). */
   syncToServer: boolean;
@@ -105,6 +117,17 @@ const PrefsSchema = z.object({
   defaultChannels: z.array(z.enum(["telegram", "email", "push", "inapp"])).default(["telegram", "inapp"]),
   pushDevice: z.boolean().default(false),
   firedLocal: z.record(z.string(), z.number()).default({}),
+});
+
+const SyncSchema = z.object({
+  serverUrl: z.string().max(300),
+  vaultId: z.string().max(40),
+  token: z.string().max(80),
+  key: z.string().max(80),
+  dev: z.string().max(40),
+  clock: z.number(),
+  cursor: z.number(),
+  known: z.record(z.string(), z.object({ sig: z.string(), u: z.number(), dev: z.string(), del: z.boolean().optional() })),
 });
 
 const TelegramSchema = z.object({
@@ -129,10 +152,11 @@ const K = {
   completions: "tf_habit_completions",
   telegram: "tf_telegram",
   prefs: "tf_prefs",
+  sync: "tf_sync",
   legacySessionKey: "tf_enc_key", // v1 stored the AES key in sessionStorage (lost on tab close)
 } as const;
 
-const DATA_KEYS: string[] = [K.user, K.tasks, K.tags, K.habits, K.completions, K.telegram, K.prefs];
+const DATA_KEYS: string[] = [K.user, K.tasks, K.tags, K.habits, K.completions, K.telegram, K.prefs, K.sync];
 const ARRAY_SCHEMAS: Record<string, z.ZodType> = {
   [K.tasks]: TaskSchema,
   [K.tags]: TagSchema,
@@ -293,6 +317,10 @@ function sanitize(key: string, parsed: unknown): unknown | undefined {
     const r = TelegramSchema.safeParse(parsed);
     return r.success ? r.data : undefined;
   }
+  if (key === K.sync) {
+    const r = SyncSchema.safeParse(parsed);
+    return r.success ? r.data : undefined;
+  }
   if (key === K.prefs) {
     const r = PrefsSchema.safeParse(parsed);
     return r.success ? r.data : undefined;
@@ -350,6 +378,11 @@ export function hydrateLocalStore(): Promise<void> {
     }
   })();
   return _hydratePromise;
+}
+
+/** Resolves when every write made so far has reached localStorage (use before something irreversible). */
+export function flushLocalStore(): Promise<void> {
+  return _writeChain;
 }
 
 export function isHydrated(): boolean {
@@ -422,6 +455,12 @@ export const localTelegram = {
   get: (): LocalTelegram | null => readValue<LocalTelegram | null>(K.telegram, null),
   set: (t: LocalTelegram) => writeValue(K.telegram, TelegramSchema.parse(t)),
   clear: () => removeValue(K.telegram),
+};
+
+export const localSync = {
+  get: (): LocalSync | null => readValue<LocalSync | null>(K.sync, null),
+  set: (v: LocalSync) => writeValue(K.sync, SyncSchema.parse(v)),
+  clear: () => removeValue(K.sync),
 };
 
 export const localPrefs = {

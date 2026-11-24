@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { localUser } from "@/lib/local-store";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { SyncCard } from "@/components/settings/SyncCard";
 import { TelegramCard } from "@/components/settings/TelegramCard";
 import { BackupCard } from "@/components/settings/BackupCard";
 import { RemindersCard } from "@/components/settings/RemindersCard";
@@ -109,6 +110,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <SyncCard />
       <TelegramCard />
       <RemindersCard />
       <BackupCard />

@@ -415,6 +415,7 @@ export async function publicCapabilities(env: Env): Promise<Record<string, unkno
   const caps: Record<string, unknown> = {
     email: { configured: Boolean(env.resendKey && env.emailTo), to: env.emailTo ? maskEmail(env.emailTo) : null },
     reminders: true,
+    sync: true,
   };
   try {
     caps.vapidPublicKey = (await getVapid(env)).publicKey;

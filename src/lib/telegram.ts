@@ -12,6 +12,8 @@
  * In both modes only the chat that completed pairing (/link CODE) is trusted.
  */
 
+import { hash } from "@/lib/sync-core";
+import { isSyncEnabled, syncNow } from "@/lib/sync";
 import { useSyncExternalStore } from "react";
 import { localTelegram, type LocalTelegram } from "@/lib/local-store";
 import { useTaskStore } from "@/store/useTaskStore";
@@ -435,9 +437,11 @@ async function runServerPoll(cfg: LocalTelegram): Promise<PollResult> {
   }
 
   const fresh = inbox.items.filter((item) => !collected.has(`${item.at}|${item.text}`));
-  const parsed = fresh.flatMap((item) => parseTasksFromText(item.text));
+  // Same message → same task ids, so devices sharing a sync vault never create it twice.
+  const parsed = fresh.flatMap((item) => parseTasksFromText(item.text).map((p, i) => ({ p, id: `tg-${hash(`${item.at}|${item.text}`)}-${i}` })));
   if (parsed.length > 0) {
-    const created = await useTaskStore.getState().createTasks(parsed.map((p) => taskFromParsed(p)));
+    if (isSyncEnabled()) await syncNow().catch(() => undefined); // see tasks other devices already made from this inbox
+    const created = await useTaskStore.getState().createTasks(parsed.map(({ p, id }) => ({ ...taskFromParsed(p), id })));
     result.added.push(...created.map((t) => t.title));
   }
   fresh.forEach((item) => collected.add(`${item.at}|${item.text}`));
