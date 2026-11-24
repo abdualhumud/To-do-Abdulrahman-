@@ -10,6 +10,7 @@ import { PomodoroTimer } from "@/components/pomodoro/PomodoroTimer";
 import { ImportTasksModal } from "@/components/capture/ImportTasksModal";
 import { TaskPreviewChips } from "@/components/capture/TaskPreviewChips";
 import { parseTaskLine } from "@/lib/task-parser";
+import { taskFromParsed } from "@/lib/reminder-fields";
 import { ClipboardList, Plus, Timer, ChevronDown } from "lucide-react";
 import { Task } from "@/types";
 import toast from "react-hot-toast";
@@ -50,9 +51,7 @@ export default function DashboardPage() {
     e.preventDefault();
     if (!parsed) return;
     setQuickTitle("");
-    const [task] = await createTasks([
-      { title: parsed.title, priority: parsed.priority, category: parsed.category, due_date: parsed.due_date ?? null },
-    ]);
+    const [task] = await createTasks([taskFromParsed(parsed)]);
     if (task) toast.success(`Added: ${task.title}`);
   }
 
@@ -106,7 +105,7 @@ export default function DashboardPage() {
             </button>
           )}
         </div>
-        {parsed && (parsed.due_date || parsed.priority || parsed.category) && (
+        {parsed && (parsed.due_date || parsed.priority || parsed.category || parsed.time || parsed.repeat) && (
           <div className="pl-10 flex items-center gap-2 text-xs text-muted-fg animate-fade-in">
             <span>Will add as</span>
             <TaskPreviewChips task={parsed} />
@@ -118,7 +117,7 @@ export default function DashboardPage() {
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <FilterBar />
         <div className="flex items-center gap-2 flex-shrink-0">
-          <button onClick={openImport} className="btn-secondary h-9 px-3 text-sm gap-1.5" title="Import a list from Notes">
+          <button onClick={openImport} className="btn-secondary h-9 px-3 text-sm gap-1.5" title="Import a list from Notes" aria-label="Import">
             <ClipboardList className="w-4 h-4" />
             <span className="hidden sm:block">Import</span>
           </button>
@@ -126,12 +125,13 @@ export default function DashboardPage() {
             onClick={() => setShowPomodoro(!showPomodoro)}
             className={`btn-secondary h-9 px-3 text-sm gap-1.5 ${showPomodoro ? "bg-accent text-accent-fg border-primary" : ""}`}
             title="Pomodoro Timer"
+            aria-label="Pomodoro"
           >
             <Timer className="w-4 h-4" />
             <span className="hidden sm:block">Pomodoro</span>
             <ChevronDown className={`w-3 h-3 hidden sm:block transition-transform ${showPomodoro ? "rotate-180" : ""}`} />
           </button>
-          <button onClick={() => setShowTaskModal(true)} className="btn-primary h-9 px-3.5 text-sm">
+          <button onClick={() => setShowTaskModal(true)} className="btn-primary h-9 px-3.5 text-sm" aria-label="New Task">
             <Plus className="w-4 h-4" />
             <span className="hidden sm:block">New Task</span>
           </button>

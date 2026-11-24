@@ -16,6 +16,7 @@ import { useSyncExternalStore } from "react";
 import { localTelegram, type LocalTelegram } from "@/lib/local-store";
 import { useTaskStore } from "@/store/useTaskStore";
 import { parseTasksFromText } from "@/lib/task-parser";
+import { taskFromParsed } from "@/lib/reminder-fields";
 import { formatDate } from "@/lib/utils";
 
 const API = "https://api.telegram.org";
@@ -112,7 +113,7 @@ export function normalizeServerUrl(raw: string): string {
   return url.origin;
 }
 
-interface ServerStatus {
+export interface ServerStatus {
   ok: boolean;
   configured: boolean;
   problem?: string | null;
@@ -120,9 +121,12 @@ interface ServerStatus {
   webhookSet?: boolean;
   webhookError?: string | null;
   redis?: boolean;
+  reminders?: boolean;
+  vapidPublicKey?: string | null;
+  email?: { configured: boolean; to: string | null };
 }
 
-async function server<T>(base: string, path: string, init: RequestInit = {}): Promise<T> {
+export async function server<T>(base: string, path: string, init: RequestInit = {}): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${base}${path}`, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
@@ -398,9 +402,7 @@ async function runBrowserPoll(initial: LocalTelegram): Promise<PollResult> {
 
     const parsed = parseTasksFromText(text);
     if (parsed.length === 0) continue;
-    const created = await useTaskStore.getState().createTasks(
-      parsed.map((p) => ({ title: p.title, priority: p.priority, category: p.category, due_date: p.due_date ?? null })),
-    );
+    const created = await useTaskStore.getState().createTasks(parsed.map((p) => taskFromParsed(p)));
     result.added.push(...created.map((t) => t.title));
     const lines = created.map((t) => `• ${t.title}${t.due_date ? ` — ${formatDate(t.due_date)}` : ""}`);
     await reply(cfg.token, msg.chat.id, `✅ Added ${created.length} task${created.length === 1 ? "" : "s"}:\n${lines.join("\n")}`);
@@ -435,9 +437,7 @@ async function runServerPoll(cfg: LocalTelegram): Promise<PollResult> {
   const fresh = inbox.items.filter((item) => !collected.has(`${item.at}|${item.text}`));
   const parsed = fresh.flatMap((item) => parseTasksFromText(item.text));
   if (parsed.length > 0) {
-    const created = await useTaskStore.getState().createTasks(
-      parsed.map((p) => ({ title: p.title, priority: p.priority, category: p.category, due_date: p.due_date ?? null })),
-    );
+    const created = await useTaskStore.getState().createTasks(parsed.map((p) => taskFromParsed(p)));
     result.added.push(...created.map((t) => t.title));
   }
   fresh.forEach((item) => collected.add(`${item.at}|${item.text}`));

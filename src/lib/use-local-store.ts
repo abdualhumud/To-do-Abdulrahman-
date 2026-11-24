@@ -2,10 +2,13 @@
 
 import { useSyncExternalStore } from "react";
 import {
+  DEFAULT_PREFS,
   getStoreVersion,
+  localPrefs,
   localTelegram,
   localUser,
   subscribeStore,
+  type LocalPrefs,
   type LocalTelegram,
   type LocalUser,
 } from "@/lib/local-store";
@@ -24,4 +27,9 @@ export function useLocalUser(): { ready: boolean; user: LocalUser | null } {
 export function useTelegramConfig(): LocalTelegram | null {
   const version = useVersion();
   return version > 0 ? localTelegram.get() : null;
+}
+
+export function usePrefs(): LocalPrefs {
+  const version = useVersion();
+  return version > 0 ? localPrefs.get() : DEFAULT_PREFS;
 }

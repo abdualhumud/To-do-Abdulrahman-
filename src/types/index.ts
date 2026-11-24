@@ -1,3 +1,7 @@
+import type { Repeat } from "../../telegram-bot/lib/recurrence";
+
+export type { Repeat };
+export type ReminderChannel = "telegram" | "email" | "push" | "inapp";
 export type Priority = "low" | "medium" | "high" | "urgent";
 export type TaskStatus = "pending" | "in_progress" | "completed" | "cancelled";
 export type Category = "work" | "personal" | "health" | "learning" | "finance" | "social" | "other";
@@ -27,7 +31,10 @@ export interface Task {
   priority: Priority;
   category: Category;
   due_date: string | null;
+  /** When to remind (ISO instant). Delivered per `reminder_channels`; repeats per `repeat`. */
   reminder_at: string | null;
+  repeat?: Repeat;
+  reminder_channels?: ReminderChannel[];
   order_index: number;
   completed_at: string | null;
   created_at: string;

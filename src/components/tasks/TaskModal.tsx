@@ -3,9 +3,13 @@
 import { useState, useEffect } from "react";
 import { Task, Priority, Category, Tag } from "@/types";
 import { useTaskStore } from "@/store/useTaskStore";
-import { X, Plus, Loader2 } from "lucide-react";
+import { X, Plus, Loader2, CalendarPlus } from "lucide-react";
 import { cn, todayLocal } from "@/lib/utils";
 import toast from "react-hot-toast";
+import { ReminderFields, type ReminderValue } from "@/components/tasks/ReminderFields";
+import { CalendarSheet } from "@/components/tasks/CalendarSheet";
+import { usePrefs, useTelegramConfig } from "@/lib/use-local-store";
+import { defaultChannels, fromLocalInput, toLocalInput } from "@/lib/reminders";
 
 interface TaskModalProps {
   task?: Task | null;
@@ -37,6 +41,30 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[0]);
   const [showTagInput, setShowTagInput] = useState(false);
+  const [reminder, setReminder] = useState<ReminderValue>(() => ({
+    enabled: Boolean(task?.reminder_at),
+    at: toLocalInput(task?.reminder_at),
+    repeat: task?.repeat ?? "none",
+    channels: task?.reminder_channels ?? [],
+  }));
+  const [showCalendar, setShowCalendar] = useState(false);
+  const serverReady = useTelegramConfig()?.mode === "server";
+  const syncOn = usePrefs().syncToServer;
+
+  function toggleReminder(enabled: boolean) {
+    if (!enabled) {
+      setReminder((r) => ({ ...r, enabled: false }));
+      return;
+    }
+    setReminder((r) => {
+      if (r.at) return { ...r, enabled: true, channels: r.channels.length ? r.channels : defaultChannels() };
+      const next = new Date();
+      next.setMinutes(0, 0, 0);
+      next.setHours(next.getHours() + 1);
+      const at = dueDate ? `${dueDate}T09:00` : toLocalInput(next.toISOString());
+      return { ...r, enabled: true, at, channels: r.channels.length ? r.channels : defaultChannels() };
+    });
+  }
 
   useEffect(() => {
     function handleEsc(e: KeyboardEvent) {
@@ -49,6 +77,8 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) { toast.error("Title is required"); return; }
+    if (reminder.enabled && !fromLocalInput(reminder.at)) { toast.error("Pick a date and time for the reminder"); return; }
+    if (reminder.enabled && reminder.channels.length === 0) { toast.error("Pick at least one way to be reminded"); return; }
     setLoading(true);
 
     const taskData = {
@@ -58,6 +88,9 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
       category,
       status,
       due_date: dueDate || null,
+      reminder_at: reminder.enabled ? fromLocalInput(reminder.at) : null,
+      repeat: reminder.enabled ? reminder.repeat : "none",
+      reminder_channels: reminder.enabled ? reminder.channels : [],
     } as Partial<Task>;
 
     if (task) {
@@ -191,6 +224,9 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
             </div>
           </div>
 
+          {/* Reminder */}
+          <ReminderFields value={reminder} onChange={setReminder} onToggle={toggleReminder} serverReady={serverReady} syncOn={syncOn} />
+
           {/* Tags */}
           <div>
             <label className="block text-sm font-medium text-base-fg mb-1.5">Tags</label>
@@ -246,6 +282,12 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
             )}
           </div>
 
+          {task && (
+            <button type="button" onClick={() => setShowCalendar(true)} className="btn-ghost text-xs -ml-2">
+              <CalendarPlus className="w-4 h-4" /> Add to Apple / Outlook calendar
+            </button>
+          )}
+
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">
@@ -258,6 +300,7 @@ export function TaskModal({ task, onClose }: TaskModalProps) {
           </div>
         </form>
       </div>
+      {showCalendar && task && <CalendarSheet task={task} onClose={() => setShowCalendar(false)} />}
     </div>
   );
 }

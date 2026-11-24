@@ -8,6 +8,7 @@ import { processCaptureRequest } from "@/lib/capture";
 import { isLinked, pollTelegram } from "@/lib/telegram";
 import { useTaskStore } from "@/store/useTaskStore";
 import { useHabitStore } from "@/store/useHabitStore";
+import { ReminderRuntime } from "@/components/providers/ReminderRuntime";
 
 const PAIRING_POLL_MS = 4_000;
 const SYNC_POLL_MS = 30_000;
@@ -35,7 +36,12 @@ export function AppBootstrap() {
       .catch(() => toast.error("Couldn't add the task from that link"));
   }, []);
 
-  return <TelegramSync />;
+  return (
+    <>
+      <TelegramSync />
+      <ReminderRuntime />
+    </>
+  );
 }
 
 function TelegramSync() {

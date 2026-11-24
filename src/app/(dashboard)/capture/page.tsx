@@ -158,8 +158,10 @@ export default function CapturePage() {
         <ul className="text-sm text-secondary-fg space-y-1.5">
           <li><strong>Dates:</strong> today, tomorrow, Friday, next week, in 3 days, 2026-12-31 — or اليوم، بكرة، بعد غد، الخميس، الأسبوع القادم</li>
           <li><strong>Priority:</strong> <code className="bg-secondary px-1 rounded">!urgent</code> <code className="bg-secondary px-1 rounded">!high</code> <code className="bg-secondary px-1 rounded">!low</code> — or <code className="bg-secondary px-1 rounded" dir="rtl">!عاجل !مهم</code></li>
+          <li><strong>Time (makes a reminder):</strong> at 5pm, 17:30, 9 am — or الساعة 5 مساء، الساعة 8 صباحا</li>
+          <li><strong>Repeat:</strong> every day, weekly, monthly, weekdays, every monday — or كل يوم، أسبوعيا، شهريا، كل يوم خميس</li>
           <li><strong>Category:</strong> <code className="bg-secondary px-1 rounded">#work</code> <code className="bg-secondary px-1 rounded">#health</code> … or <code className="bg-secondary px-1 rounded" dir="rtl">#عمل #صحة #شخصي</code></li>
-          <li><strong>Example:</strong> <span dir="auto">Pay the invoice Thursday !high #finance</span> · <span dir="auto">اشتري حليب بكرة #صحة</span></li>
+          <li><strong>Examples:</strong> <span dir="auto">Pay the invoice Thursday !high #finance</span> · <span dir="auto">اتصل بأمي غدا الساعة 5 مساء</span> · <span dir="auto">Take pills every day at 8am</span></li>
         </ul>
       </Section>
 

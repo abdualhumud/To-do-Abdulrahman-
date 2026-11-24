@@ -98,6 +98,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         category: item.category || "personal",
         due_date: item.due_date ?? null,
         reminder_at: item.reminder_at ?? null,
+        repeat: item.repeat ?? "none",
+        reminder_channels: item.reminder_channels ?? [],
         order_index: base.length + i,
         completed_at: null,
         created_at: now(),

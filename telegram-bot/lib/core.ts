@@ -1,124 +1,32 @@
 /**
- * TaskFlow always-on Telegram server (Vercel).
- *
- * The bot answers instantly 24/7; tasks wait in a small Redis inbox until the web app
- * (which keeps its data in the browser) collects them. The server never reads or stores
- * the user's task list — only raw message text until it is collected.
- *
- * Env: TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, UPSTASH_REDIS_REST_URL/TOKEN
- *      (or KV_REST_API_URL/TOKEN), optional APP_ORIGIN, TELEGRAM_API_BASE (tests).
+ * Telegram webhook, pairing, inbox, status and setup handlers.
+ * Shared plumbing lives in ./infra, reminders and calendar feeds in ./reminders.
  */
 
-export interface Env {
-  token: string;
-  secret: string;
-  redisUrl: string;
-  redisToken: string;
-  appOrigin: string;
-  apiBase: string;
-}
+import {
+  type Env,
+  type Result,
+  CODE_ALPHABET,
+  INBOX_MAX,
+  INBOX_TTL_S,
+  KEY_ALPHABET,
+  KEY_RE,
+  PAIR_TTL_S,
+  json,
+  limited,
+  missingConfig,
+  preflight,
+  random,
+  readEnv,
+  redis,
+  safeEqual,
+  say,
+  tg,
+} from "./infra";
+import { publicCapabilities } from "./reminders";
 
-export function readEnv(source: Record<string, string | undefined> = process.env): Env {
-  return {
-    token: source.TELEGRAM_BOT_TOKEN ?? "",
-    secret: source.TELEGRAM_WEBHOOK_SECRET ?? "",
-    redisUrl: source.UPSTASH_REDIS_REST_URL ?? source.KV_REST_API_URL ?? "",
-    redisToken: source.UPSTASH_REDIS_REST_TOKEN ?? source.KV_REST_API_TOKEN ?? "",
-    appOrigin: source.APP_ORIGIN ?? "*",
-    apiBase: source.TELEGRAM_API_BASE ?? "https://api.telegram.org",
-  };
-}
-
-export interface Result {
-  status: number;
-  body: unknown;
-  headers?: Record<string, string>;
-}
-
-// ─── Redis (Upstash REST: a command array POSTed to the base URL) ─────────────
-
-async function redis(env: Env, command: (string | number)[]): Promise<unknown> {
-  const res = await fetch(env.redisUrl, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.redisToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify(command),
-  });
-  const json = (await res.json()) as { result?: unknown; error?: string };
-  if (json.error) throw new Error(`redis: ${json.error}`);
-  return json.result;
-}
-
-// ─── Telegram ─────────────────────────────────────────────────────────────────
-
-async function tg<T>(env: Env, method: string, params: Record<string, string | number> = {}): Promise<T> {
-  const res = await fetch(`${env.apiBase}/bot${env.token}/${method}`, {
-    method: "POST",
-    body: new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])),
-  });
-  const json = (await res.json()) as { ok: boolean; result: T; description?: string };
-  if (!json.ok) throw new Error(`telegram ${method}: ${json.description ?? res.status}`);
-  return json.result;
-}
-
-async function say(env: Env, chatId: number, text: string): Promise<void> {
-  try {
-    await tg(env, "sendMessage", { chat_id: chatId, text });
-  } catch (e) {
-    console.error("sendMessage failed", e);
-  }
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const KEY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-const PAIR_TTL_S = 15 * 60;
-const INBOX_TTL_S = 30 * 24 * 3600;
-const INBOX_MAX = 500;
-const KEY_RE = /^[A-Za-z0-9]{32}$/;
-
-function random(alphabet: string, length: number): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
-}
-
-/** Constant-time string comparison, so secrets can't be guessed from response timing. */
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-/** Fixed-window limiter in Redis; returns true when the call should be refused. */
-async function limited(env: Env, bucket: string, max: number): Promise<boolean> {
-  const key = `rate:${bucket}:${Math.floor(Date.now() / 60_000)}`;
-  const used = Number(await redis(env, ["INCR", key]));
-  if (used === 1) await redis(env, ["EXPIRE", key, 120]);
-  return used > max;
-}
-
-function cors(env: Env): Record<string, string> {
-  return {
-    "Access-Control-Allow-Origin": env.appOrigin,
-    "Access-Control-Allow-Headers": "authorization, content-type",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Max-Age": "86400",
-  };
-}
-
-function json(env: Env, status: number, body: unknown): Result {
-  return { status, body, headers: cors(env) };
-}
-
-const preflight = (env: Env): Result => ({ status: 204, body: null, headers: cors(env) });
-
-function missingConfig(env: Env): string | null {
-  if (!env.token) return "TELEGRAM_BOT_TOKEN is not set";
-  if (!env.secret) return "TELEGRAM_WEBHOOK_SECRET is not set";
-  if (!env.redisUrl || !env.redisToken) return "Redis is not connected (add Upstash Redis to the project)";
-  return null;
-}
+export { readEnv };
+export type { Env, Result };
 
 // ─── Telegram webhook ─────────────────────────────────────────────────────────
 
@@ -301,6 +209,7 @@ export async function handleStatus(env: Env, method: string): Promise<Result> {
   if (env.redisUrl && env.redisToken) {
     try {
       report.redis = (await redis(env, ["PING"])) === "PONG";
+      if (report.configured) Object.assign(report, await publicCapabilities(env));
     } catch {
       report.redis = false;
     }

@@ -13,6 +13,9 @@ the browser (no account, no database) and is deployed as a static site to GitHub
   `!priority` are understood in English and Arabic. See the in-app **Capture** page.
 - **Telegram** — either an always-on server (`telegram-bot/` on Vercel, replies instantly even when
   the app is closed) or browser-only polling with your own bot token.
+- **Reminders** — set a time (and repeat: daily, Mon–Fri, Sun–Thu, weekly, monthly) per task, or just write
+  “…tomorrow at 5pm”. Delivered in the app, by Telegram, email or phone push (the last three need the bot server).
+- **Apple Calendar & Outlook** — add any task as an event (.ics / Outlook link) or subscribe to a live calendar feed.
 - **Habits, Pomodoro, analytics**, light/dark theme.
 - **Private by design** — data is stored encrypted in your browser; export/import a JSON backup in
   Settings.

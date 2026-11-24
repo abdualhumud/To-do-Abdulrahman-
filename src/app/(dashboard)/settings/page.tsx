@@ -5,6 +5,7 @@ import { localUser } from "@/lib/local-store";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { TelegramCard } from "@/components/settings/TelegramCard";
 import { BackupCard } from "@/components/settings/BackupCard";
+import { RemindersCard } from "@/components/settings/RemindersCard";
 import { Settings, Sun, Moon, Monitor, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -109,6 +110,7 @@ export default function SettingsPage() {
       </div>
 
       <TelegramCard />
+      <RemindersCard />
       <BackupCard />
 
       {/* About */}

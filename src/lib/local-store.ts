@@ -15,6 +15,7 @@
  */
 
 import { z } from "zod";
+import { REPEATS } from "../../telegram-bot/lib/recurrence";
 
 export interface LocalUser {
   id: string;
@@ -54,6 +55,9 @@ export const TaskSchema = z
     due_date: z.string().nullable().optional(),
     completed_at: z.string().nullable().optional(),
     created_at: z.string().optional(),
+    reminder_at: z.string().nullable().optional(),
+    repeat: z.enum(REPEATS as [string, ...string[]]).optional(),
+    reminder_channels: z.array(z.enum(["telegram", "email", "push", "inapp"])).optional(),
     tags: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()).optional(),
   })
   .passthrough();
@@ -83,6 +87,26 @@ export const CompletionSchema = z
   })
   .passthrough();
 
+export interface LocalPrefs {
+  /** Opt-in: keep a copy of dated open tasks on the bot server (needed for reminders when the app is closed and for the calendar feed). */
+  syncToServer: boolean;
+  /** Channels pre-selected for new reminders. */
+  defaultChannels: ("telegram" | "email" | "push" | "inapp")[];
+  /** This device has been registered for phone notifications. */
+  pushDevice: boolean;
+  /** Last occurrence (ms) already shown in-app, per task id. */
+  firedLocal: Record<string, number>;
+}
+
+export const DEFAULT_PREFS: LocalPrefs = { syncToServer: false, defaultChannels: ["telegram", "inapp"], pushDevice: false, firedLocal: {} };
+
+const PrefsSchema = z.object({
+  syncToServer: z.boolean().default(false),
+  defaultChannels: z.array(z.enum(["telegram", "email", "push", "inapp"])).default(["telegram", "inapp"]),
+  pushDevice: z.boolean().default(false),
+  firedLocal: z.record(z.string(), z.number()).default({}),
+});
+
 const TelegramSchema = z.object({
   mode: z.enum(["browser", "server"]).default("browser"),
   token: z.string().max(200).default(""),
@@ -104,10 +128,11 @@ const K = {
   habits: "tf_habits",
   completions: "tf_habit_completions",
   telegram: "tf_telegram",
+  prefs: "tf_prefs",
   legacySessionKey: "tf_enc_key", // v1 stored the AES key in sessionStorage (lost on tab close)
 } as const;
 
-const DATA_KEYS: string[] = [K.user, K.tasks, K.tags, K.habits, K.completions, K.telegram];
+const DATA_KEYS: string[] = [K.user, K.tasks, K.tags, K.habits, K.completions, K.telegram, K.prefs];
 const ARRAY_SCHEMAS: Record<string, z.ZodType> = {
   [K.tasks]: TaskSchema,
   [K.tags]: TagSchema,
@@ -268,6 +293,10 @@ function sanitize(key: string, parsed: unknown): unknown | undefined {
     const r = TelegramSchema.safeParse(parsed);
     return r.success ? r.data : undefined;
   }
+  if (key === K.prefs) {
+    const r = PrefsSchema.safeParse(parsed);
+    return r.success ? r.data : undefined;
+  }
   const schema = ARRAY_SCHEMAS[key];
   if (!schema || !Array.isArray(parsed)) return undefined;
   const valid = parsed.filter((item) => schema.safeParse(item).success);
@@ -393,6 +422,11 @@ export const localTelegram = {
   get: (): LocalTelegram | null => readValue<LocalTelegram | null>(K.telegram, null),
   set: (t: LocalTelegram) => writeValue(K.telegram, TelegramSchema.parse(t)),
   clear: () => removeValue(K.telegram),
+};
+
+export const localPrefs = {
+  get: (): LocalPrefs => readValue<LocalPrefs>(K.prefs, DEFAULT_PREFS),
+  patch: (changes: Partial<LocalPrefs>) => writeValue(K.prefs, PrefsSchema.parse({ ...localPrefs.get(), ...changes })),
 };
 
 function arrayStore(key: string) {

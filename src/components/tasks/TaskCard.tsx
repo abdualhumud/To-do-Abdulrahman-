@@ -7,10 +7,12 @@ import { CSS } from "@dnd-kit/utilities";
 import { cn, formatDate, isOverdue, isDueToday } from "@/lib/utils";
 import {
   GripVertical, Calendar, Edit2, Trash2,
-  ChevronDown, ChevronUp, CheckSquare, Square, Plus,
+  ChevronDown, ChevronUp, CheckSquare, Square, Plus, Bell, Repeat as RepeatIcon, CalendarPlus,
 } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { CalendarSheet } from "@/components/tasks/CalendarSheet";
+import { REPEAT_LABELS } from "../../../telegram-bot/lib/recurrence";
 
 const PRIORITY_CONFIG = {
   urgent: { label: "Urgent", color: "text-danger",     bg: "rgba(239,68,68,0.1)",   dot: "bg-red-500",    border: "rgb(var(--danger))" },
@@ -34,6 +36,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [newSubtask, setNewSubtask] = useState("");
   const [addingSubtask, setAddingSubtask] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
 
@@ -121,6 +124,13 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
             {/* Action buttons — visible on hover */}
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity flex-shrink-0">
               <button
+                onClick={() => setShowCalendar(true)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-accent hover:text-primary transition-all"
+                title="Add to calendar" aria-label="Add to calendar"
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+              </button>
+              <button
                 onClick={() => onEdit(task)}
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-fg hover:bg-accent hover:text-primary transition-all"
                 title="Edit" aria-label="Edit task"
@@ -175,6 +185,19 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
                 <Calendar className="w-3 h-3" />
                 {overdue ? "Overdue · " : dueToday ? "Today · " : ""}
                 {formatDate(task.due_date)}
+              </span>
+            )}
+
+            {/* Reminder */}
+            {task.reminder_at && !isCompleted && (
+              <span className="inline-flex items-center gap-1 text-xs text-secondary-fg px-1.5 py-0.5 rounded-md bg-secondary" title="Reminder">
+                <Bell className="w-3 h-3" />
+                {new Date(task.reminder_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                {task.repeat && task.repeat !== "none" && (
+                  <span className="inline-flex items-center gap-0.5" title={REPEAT_LABELS[task.repeat]}>
+                    <RepeatIcon className="w-3 h-3" />
+                  </span>
+                )}
               </span>
             )}
 
@@ -268,6 +291,7 @@ export function TaskCard({ task, onEdit }: TaskCardProps) {
           </div>
         </div>
       </div>
+      {showCalendar && <CalendarSheet task={task} onClose={() => setShowCalendar(false)} />}
     </div>
   );
 }

@@ -13,6 +13,7 @@
  */
 
 import type { Task } from "@/types";
+import { taskFromParsed } from "@/lib/reminder-fields";
 import { useTaskStore } from "@/store/useTaskStore";
 import {
   MAX_TASKS_PER_BATCH,
@@ -76,10 +77,9 @@ export function buildTasksFromParams(params: URLSearchParams): Partial<Task>[] {
   return parseTasksFromText(text)
     .slice(0, MAX_TASKS_PER_BATCH)
     .map((p) => ({
-      title: p.title,
+      ...taskFromParsed({ ...p, due_date: due ?? p.due_date }),
       priority: priority ?? p.priority,
       category: category ?? p.category,
-      due_date: due ?? p.due_date ?? null,
       description: notes,
     }));
 }

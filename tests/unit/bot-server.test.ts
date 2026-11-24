@@ -2,6 +2,7 @@
 import { test, before } from "node:test";
 import assert from "node:assert/strict";
 import { handleInbox, handlePair, handleSetup, handleStatus, handleWebhook, readEnv } from "../../telegram-bot/lib/core.ts";
+import { FakeRedis, FakeTelegram } from "./helpers/fakes.ts";
 
 const SECRET = "test-webhook-secret";
 const TOKEN = "123456789:AAHdqTcvCH1vGWJxfSeofSs0K38CIDabcde";
@@ -14,50 +15,22 @@ const env = readEnv({
 });
 
 // ── fakes ────────────────────────────────────────────────────────────────────
-const kv = new Map<string, string>();
-const lists = new Map<string, string[]>();
-const sent: { chat: number; text: string }[] = [];
-let webhookUrl = "";
-
-function redis(cmd: (string | number)[]): unknown {
-  const [name, ...a] = cmd;
-  const k = String(a[0]);
-  switch (String(name).toUpperCase()) {
-    case "PING": return "PONG";
-    case "GET": return kv.get(k) ?? null;
-    case "SET": kv.set(k, String(a[1])); return "OK";
-    case "GETDEL": { const v = kv.get(k) ?? null; kv.delete(k); return v; }
-    case "DEL": return a.reduce<number>((n, key) => n + Number(kv.delete(String(key)) || lists.delete(String(key))), 0);
-    case "EXISTS": return kv.has(k) || lists.has(k) ? 1 : 0;
-    case "INCR": { const v = Number(kv.get(k) ?? 0) + 1; kv.set(k, String(v)); return v; }
-    case "EXPIRE": return 1;
-    case "RPUSH": { const l = lists.get(k) ?? []; l.push(...a.slice(1).map(String)); lists.set(k, l); return l.length; }
-    case "LRANGE": { const l = lists.get(k) ?? []; const s = Number(a[1]); let e = Number(a[2]); if (e < 0) e = l.length + e; return l.slice(s < 0 ? l.length + s : s, e + 1); }
-    case "LTRIM": { const l = lists.get(k) ?? []; let s = Number(a[1]); let e = Number(a[2]); if (s < 0) s = Math.max(l.length + s, 0); if (e < 0) e = l.length + e; const out = l.slice(s, e + 1); if (out.length) lists.set(k, out); else lists.delete(k); return "OK"; }
-    default: throw new Error(`fake redis: unsupported ${name}`);
-  }
-}
-
-const ok = (result: unknown) => new Response(JSON.stringify({ ok: true, result }), { status: 200 });
+const redis = new FakeRedis();
+const telegram = new FakeTelegram(TOKEN);
+const sent = telegram.sent;
 
 before(() => {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith("http://redis.test")) {
       if ((init?.headers as Record<string, string>).Authorization !== "Bearer redis-token") return new Response(JSON.stringify({ error: "WRONGPASS" }), { status: 401 });
-      return new Response(JSON.stringify({ result: redis(JSON.parse(String(init?.body))) }));
+      const r = redis.http(new URL(url).pathname, JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify(r.json), { status: r.status });
     }
     const m = /^http:\/\/tg\.test\/bot([^/]+)\/(\w+)$/.exec(url);
     if (!m) throw new Error(`unexpected fetch ${url}`);
-    const params = new URLSearchParams(String(init?.body ?? ""));
-    if (m[1] !== TOKEN) return new Response(JSON.stringify({ ok: false, description: "Unauthorized" }), { status: 401 });
-    switch (m[2]) {
-      case "getMe": return ok({ username: "taskflow_test_bot" });
-      case "setWebhook": webhookUrl = params.get("url")!; return ok(true);
-      case "getWebhookInfo": return ok({ url: webhookUrl });
-      case "sendMessage": sent.push({ chat: Number(params.get("chat_id")), text: params.get("text")! }); return ok({});
-      default: return ok(true);
-    }
+    const reply = telegram.call(m[1], m[2], new URLSearchParams(String(init?.body ?? "")));
+    return new Response(JSON.stringify(reply), { status: reply.ok ? 200 : 401 });
   }) as typeof fetch;
 });
 
@@ -85,7 +58,7 @@ test("setup rejects a wrong key and registers https://<host>/api/webhook with th
   assert.equal((await handleSetup(env, { key: "wrong" }, "x.vercel.app")).status, 401);
   const r = await handleSetup(env, { key: SECRET }, "taskflow-bot.vercel.app");
   assert.equal(r.status, 200);
-  assert.equal(webhookUrl, "https://taskflow-bot.vercel.app/api/webhook");
+  assert.equal(telegram.webhookUrl, "https://taskflow-bot.vercel.app/api/webhook");
   assert.equal(((await handleStatus(env, "GET")).body as { webhookSet: boolean }).webhookSet, true);
 });
 

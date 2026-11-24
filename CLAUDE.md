@@ -138,6 +138,55 @@ Telegram — the dev sandbox cannot reach them. If setup fails, `/api/status` an
 - Real api.telegram.org could not be reached from the dev sandbox, so Telegram tests use a mocked
   Bot API (401, 409, network abort, leftover webhook, two tabs, backlog while closed).
 
+## Reminders & calendar
+
+**Model** — `Task.reminder_at` (ISO instant), `repeat` (`none|daily|mon-fri|sun-thu|weekly|monthly`; Sun–Thu is
+the Saudi work week), `reminder_channels` (`inapp|telegram|email|push`). Shared pure logic lives in
+`telegram-bot/lib/recurrence.ts` (imported by the app via a relative path): wall-clock recurrence across DST,
+month-end clamping, `nextFire()` (one-off fires once; late-but-within-2h still sent; repeating never floods
+after downtime). `ics.ts` is shared the same way.
+
+**From text** — the parser also reads time (`at 5pm`, `17:30`, `الساعة 5 مساء`; without am/pm, 1–6 means
+afternoon, 7–12 as written) and repetition (`every day`, `weekly`, `every monday`, `كل يوم`, `أسبوعيا`,
+`كل يوم خميس`, `أيام العمل`). `taskFromParsed()` (`src/lib/reminder-fields.ts`) turns it into a reminder: no date
+→ today, or tomorrow if the time passed (and sets the due date); repeat without a time → 09:00; channels =
+user defaults limited to what is usable. All entry points (quick add, import, `?add=` links, both Telegram
+modes) use it.
+
+**Delivery**
+- *In app* (`ReminderRuntime`, every 20 s + on focus): toast + `Notification` if allowed; `prefs.firedLocal`
+  remembers the last shown occurrence. No server needed.
+- *Server* (opt-in; Settings → Reminders → "Keep reminders on my server"): the app PUTs a replace-all copy of
+  open tasks that have a due date or reminder to `/api/reminders` (debounced, skipped when unchanged).
+  Redis: `rem:<key>`, `cal:<key>`, `state:<key>` (last delivered), zset `due` scored by next fire time.
+  `/api/cron` (secret) claims due members with `ZREM` (exactly one of overlapping runs wins → no double
+  sends; at-most-once), delivers per channel with `Promise.all`, records the occurrence, reschedules
+  repeats. Re-syncing never refires (state), editing the time does.
+  - Telegram → the linked chat (`linked:<key>`). Email → Resend, **recipient fixed by server env
+    `REMINDER_EMAIL_TO`** (the client cannot choose it, so a leaked key can't spam others); default sender
+    `onboarding@resend.dev` only delivers to the Resend account owner. Phone → Web Push (`web-push`, VAPID keys
+    generated once into Redis `vapid:keys`, public key from `/api/status`); `public/sw.js` shows it and only
+    opens same-origin URLs; 404/410 subscriptions are pruned. iOS push works only for a Home-Screen web app
+    (separate storage from Safari — the UI says so).
+  - Test buttons (`POST /api/reminders?test=<channel>`) return `{ok:true, delivered, detail}` — request success
+    and delivery success are separate on purpose.
+- *Who calls cron*: Vercel cron daily (`vercel.json`, Hobby limit; needs `CRON_SECRET` env) as a safety net;
+  `.github/workflows/reminders.yml` every 5 min (repo variable `BOT_SERVER_URL`, secret `CRON_SECRET`; runs
+  only from the default branch and can lag) or an external pinger every minute. Precision = how often cron runs.
+
+**Calendar** — per task: `.ics` download (UTC instant for one-offs; *floating local time + RRULE* for repeats so
+they survive DST without VTIMEZONE; all-day events for due-date-only tasks; VALARM so the calendar app itself
+alerts), Outlook web "new event" links (M365 and Outlook.com; they cannot carry repetition). Subscription:
+`POST /api/feed` → private `https://<server>/api/feed?k=<feedKey>` (the URL is the secret because calendar apps
+can't send headers) → `webcal://` for Apple, "Subscribe from web" for Outlook; Apple refreshes ~hourly, Outlook
+can take hours. The feed is built from the synced copy, so it needs the opt-in sync.
+
+**Server env**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, Upstash Redis, optional `CRON_SECRET`,
+`RESEND_API_KEY`, `REMINDER_EMAIL_TO`, `EMAIL_FROM`, `APP_ORIGIN`. Nothing here has run against real Vercel/
+Resend/push services (sandbox can't reach them): unit tests use fakes (`tests/unit/helpers/fakes.ts`), the SW
+is tested in a `vm` sandbox, and `reminders.e2e.js` drives the whole flow with a controllable clock
+(`/__cron?shiftMinutes=` shifts `Date.now()` for one cron call; Playwright `page.clock` for in-app alerts).
+
 ## Backup
 
 Settings → Export/Import (`src/lib/backup.ts`): JSON with tasks/tags/habits/completions
@@ -184,10 +233,11 @@ Settings → Export/Import (`src/lib/backup.ts`): JSON with tasks/tags/habits/co
 
 ## How to verify (do this, don't trust the type checker)
 1. `npm run lint && npm test && node_modules/.bin/next build`
-   - `tests/unit/*.test.ts` use Node's built-in runner with `--experimental-strip-types` (so
-     imports in tested files need explicit `.ts` and no `@/` alias; the parser is deliberately
-     dependency-free). `bot-server.test.ts` stubs `fetch` with fakes of Upstash REST + the Bot API.
-   - Run unit tests under several `TZ=` values when touching dates.
+   - `tests/unit/*.test.ts` run on Node's built-in runner through `tsx` (`node --import tsx --test`), so
+     the sources may import each other without extensions (needed for Vercel's builder). `recurrence.ts`,
+     `ics.ts` and the parser are dependency-free on purpose. Server tests stub `fetch` with fakes of Upstash
+     REST (incl. `/pipeline`), the Bot API and Resend.
+   - Run unit tests under several `TZ=` values when touching dates or recurrence.
 2. `npm run test:e2e` — `tests/e2e/run.mjs` serves `out/` under `/To-do-Abdulrahman-/`, starts the
    bot harness (`bot-harness.mts`: fake Redis + fake Telegram + the real `telegram-bot/api/*.ts`
    via `npx tsx`) and drives Chromium with Playwright using `launchPersistentContext(dir)` —
@@ -219,7 +269,8 @@ src/
       habits/ analytics/ settings/   Settings = profile, theme, Telegram, backup
   components/
     capture/                    ImportTasksModal, TaskPreviewChips
-    settings/                   TelegramCard, BackupCard
+    settings/                   TelegramCard, RemindersCard, BackupCard
+    tasks/                      …ReminderFields (modal), CalendarSheet
     providers/                  ThemeProvider, AppBootstrap (load data, capture, Telegram poll)
     layout/ tasks/ analytics/ dashboard/ habits/ pomodoro/
   lib/
@@ -227,7 +278,9 @@ src/
     use-local-store.ts          useLocalUser / useTelegramConfig hooks
     task-parser.ts              EN/AR text → task fields
     capture.ts  telegram.ts  backup.ts  utils.ts
+    reminders.ts  reminder-fields.ts  calendar.ts  push.ts   (sync/in-app alerts, text→reminder, .ics/Outlook/feed, Web Push)
   store/                        Zustand: useTaskStore (createTasks, merge-safe reorder), useHabitStore
-telegram-bot/                   Always-on bot server for Vercel: api/{webhook,pair,inbox,status,setup}.ts + lib/core.ts
+telegram-bot/                   Always-on bot server for Vercel: api/{webhook,pair,inbox,status,setup,reminders,push,cron,feed}.ts
+                                + lib/{core,infra,reminders,recurrence,ics}.ts (recurrence/ics are also imported by the app)
 tests/unit, tests/e2e           node:test suites (CI) and Playwright suites (manual)
 ```

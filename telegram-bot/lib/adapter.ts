@@ -10,10 +10,19 @@ export function headerMap(req: VercelRequest): Record<string, string | undefined
   return Object.fromEntries(Object.keys(req.headers).map((k) => [k, header(req, k)]));
 }
 
+export function queryMap(req: VercelRequest): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(req.query).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v]));
+}
+
 export function send(res: VercelResponse, result: Result): void {
   for (const [k, v] of Object.entries(result.headers ?? {})) res.setHeader(k, v);
   if (result.body === null) {
     res.status(result.status).end();
+    return;
+  }
+  if (typeof result.body === "string") {
+    res.setHeader("Content-Type", result.contentType ?? "text/plain; charset=utf-8");
+    res.status(result.status).send(result.body);
     return;
   }
   res.status(result.status).json(result.body);

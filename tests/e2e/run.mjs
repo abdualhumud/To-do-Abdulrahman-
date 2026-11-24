@@ -64,7 +64,7 @@ await waitFor("http://localhost:4173/To-do-Abdulrahman-/login/");
 await waitFor("http://127.0.0.1:4303/api/status");
 
 let failed = 0;
-for (const suite of ["app.e2e.js", "telegram-browser.e2e.js", "telegram-server.e2e.js"]) {
+for (const suite of ["app.e2e.js", "telegram-browser.e2e.js", "telegram-server.e2e.js", "reminders.e2e.js"]) {
   console.log(`\n=== ${suite}`);
   await fetch("http://127.0.0.1:4302/__reset", { method: "POST" }); // clean bot state for every suite
   const r = spawnSync("node", [path.join(here, suite)], { cwd: root, stdio: "inherit" });

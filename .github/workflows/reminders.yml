@@ -1,0 +1,29 @@
+name: Reminder scheduler
+
+# Wakes the bot server every few minutes so due reminders (Telegram / email / phone) are sent.
+# Setup: Settings → Secrets and variables → Actions:
+#   Variable  BOT_SERVER_URL = https://<your-project>.vercel.app
+#   Secret    CRON_SECRET    = the CRON_SECRET (or TELEGRAM_WEBHOOK_SECRET) set on the server
+# GitHub only runs scheduled workflows from the DEFAULT branch, may delay them by several minutes
+# under load, and pauses them after 60 days without repository activity. For exact timing use an
+# external pinger (e.g. cron-job.org every minute with the header "Authorization: Bearer <secret>").
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    if: ${{ vars.BOT_SERVER_URL != '' }}
+    steps:
+      - name: Send due reminders
+        env:
+          BOT_SERVER_URL: ${{ vars.BOT_SERVER_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail --silent --show-error --max-time 30 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "${BOT_SERVER_URL%/}/api/cron"

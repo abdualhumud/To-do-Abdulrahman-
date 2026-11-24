@@ -5,6 +5,7 @@ import { ClipboardPaste, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { useTaskStore } from "@/store/useTaskStore";
 import { MAX_TASKS_PER_BATCH, parseTasksFromText } from "@/lib/task-parser";
+import { taskFromParsed } from "@/lib/reminder-fields";
 import { TaskPreviewChips } from "@/components/capture/TaskPreviewChips";
 
 interface Props {
@@ -36,9 +37,7 @@ export function ImportTasksModal({ initialText = "", onClose }: Props) {
   async function handleAdd() {
     if (tasks.length === 0 || saving) return;
     setSaving(true);
-    const created = await createTasks(
-      tasks.map((t) => ({ title: t.title, priority: t.priority, category: t.category, due_date: t.due_date ?? null })),
-    );
+    const created = await createTasks(tasks.map((t) => taskFromParsed(t)));
     toast.success(`Added ${created.length} task${created.length === 1 ? "" : "s"}`);
     onClose();
   }
