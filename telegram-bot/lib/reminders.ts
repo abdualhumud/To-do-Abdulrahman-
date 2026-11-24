@@ -29,6 +29,9 @@ import {
 } from "./infra";
 import { REPEAT_LABELS, formatZoned, isRepeat, isValidTimeZone, nextFire, type Repeat } from "./recurrence";
 import { buildCalendar, type CalendarItem } from "./ics";
+import { generateVapidKeys, sendWebPush, type PushSubscription, type Vapid } from "./webpush";
+
+export type { PushSubscription, Vapid };
 
 export type Channel = "telegram" | "email" | "push";
 const CHANNELS: Channel[] = ["telegram", "email", "push"];
@@ -150,14 +153,6 @@ export async function syncItems(env: Env, key: string, body: unknown, now: numbe
 
 // ─── Delivery ─────────────────────────────────────────────────────────────────
 
-export interface Vapid {
-  publicKey: string;
-  privateKey: string;
-}
-export interface PushSubscription {
-  endpoint: string;
-  keys: { p256dh: string; auth: string };
-}
 export interface Deps {
   sendPush?: (sub: PushSubscription, payload: string, vapid: Vapid, subject: string) => Promise<void>;
 }
@@ -193,23 +188,13 @@ async function sendEmail(env: Env, subject: string, text: string): Promise<void>
   }
 }
 
-/** VAPID keys are generated once and kept in Redis, so no manual key setup is needed. */
+/** VAPID keys are generated once and kept in the store, so no manual key setup is needed. */
 export async function getVapid(env: Env): Promise<Vapid> {
   const existing = (await redis(env, ["GET", "vapid:keys"])) as string | null;
   if (existing) return JSON.parse(existing) as Vapid;
-  const { generateKeyPairSync } = await import("node:crypto");
-  const { privateKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
-  const jwk = privateKey.export({ format: "jwk" }) as { d: string; x: string; y: string };
-  const raw = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x, "base64url"), Buffer.from(jwk.y, "base64url")]);
-  const keys: Vapid = { publicKey: raw.toString("base64url"), privateKey: jwk.d };
+  const keys = await generateVapidKeys();
   await redis(env, ["SET", "vapid:keys", JSON.stringify(keys), "NX"]);
   return JSON.parse(((await redis(env, ["GET", "vapid:keys"])) as string | null) ?? JSON.stringify(keys)) as Vapid;
-}
-
-async function defaultSendPush(sub: PushSubscription, payload: string, vapid: Vapid, subject: string): Promise<void> {
-  const webpush = (await import("web-push")).default;
-  webpush.setVapidDetails(subject, vapid.publicKey, vapid.privateKey);
-  await webpush.sendNotification(sub, payload, { TTL: 3600 });
 }
 
 async function deliver(env: Env, key: string, item: StoredItem, fireAt: number, deps: Deps, only?: Channel): Promise<Delivery[]> {
@@ -232,7 +217,7 @@ async function deliver(env: Env, key: string, item: StoredItem, fireAt: number, 
       if (flat.length === 0) throw new Error("No phone is registered for notifications");
       const vapid = await getVapid(env);
       const subject = env.emailTo ? `mailto:${env.emailTo}` : "mailto:taskflow@example.com";
-      const send = deps.sendPush ?? defaultSendPush;
+      const send = deps.sendPush ?? ((sub, payload, vapid, subject) => sendWebPush(sub, payload, vapid, subject));
       const payload = JSON.stringify({ title, body: `${formatZoned(fireAt, item.tz)}${item.description ? `\n${item.description}` : ""}`, tag: item.id, url: item.appUrl });
       let delivered = 0;
       for (let i = 0; i + 1 < flat.length; i += 2) {
@@ -354,7 +339,8 @@ export async function handlePush(
 
   if (method === "POST") {
     const sub = (body as { subscription?: PushSubscription } | null)?.subscription;
-    const valid = sub && /^https:\/\/\S{10,500}$/.test(sub.endpoint ?? "") && sub.keys?.p256dh && sub.keys?.auth;
+    const endpointOk = (url: string) => /^https:\/\/\S{10,500}$/.test(url) || (env.testMode && /^http:\/\/127\.0\.0\.1:\d+\/\S*$/.test(url));
+    const valid = sub && endpointOk(sub.endpoint ?? "") && sub.keys?.p256dh && sub.keys?.auth;
     if (!valid) return json(env, 400, { ok: false, error: "Invalid subscription" });
     const count = Number(await redis(env, ["HLEN", `push:${key}`]));
     if (count >= MAX_DEVICES) return json(env, 400, { ok: false, error: "Too many devices" });

@@ -10,7 +10,14 @@
  *      REMINDER_EMAIL_TO, EMAIL_FROM, TELEGRAM_API_BASE / RESEND_API_BASE (tests).
  */
 
+/** Storage backend. Upstash REST is the default; the Cloudflare Worker injects a Durable Object. */
+export interface Store {
+  run(command: (string | number)[]): Promise<unknown>;
+  pipeline(commands: (string | number)[][]): Promise<unknown[]>;
+}
+
 export interface Env {
+  store?: Store;
   token: string;
   secret: string;
   redisUrl: string;
@@ -22,6 +29,8 @@ export interface Env {
   emailTo: string;
   emailFrom: string;
   resendBase: string;
+  /** Tests only: lets requests set the clock and use /__redis and /__reset. Never set in production. */
+  testMode: boolean;
 }
 
 export function readEnv(source: Record<string, string | undefined> = process.env): Env {
@@ -37,6 +46,7 @@ export function readEnv(source: Record<string, string | undefined> = process.env
     emailTo: source.REMINDER_EMAIL_TO ?? "",
     emailFrom: source.EMAIL_FROM ?? "TaskFlow <onboarding@resend.dev>",
     resendBase: source.RESEND_API_BASE ?? "https://api.resend.com",
+    testMode: source.ALLOW_TEST_CLOCK === "1",
   };
 }
 
@@ -50,6 +60,7 @@ export interface Result {
 // ─── Redis (Upstash REST: a command array POSTed to the base URL) ─────────────
 
 export async function redis(env: Env, command: (string | number)[]): Promise<unknown> {
+  if (env.store) return env.store.run(command);
   const res = await fetch(env.redisUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${env.redisToken}`, "Content-Type": "application/json" },
@@ -62,6 +73,7 @@ export async function redis(env: Env, command: (string | number)[]): Promise<unk
 
 /** Several Redis commands in one round trip (Upstash REST /pipeline). */
 export async function pipeline(env: Env, commands: (string | number)[][]): Promise<unknown[]> {
+  if (env.store) return env.store.pipeline(commands);
   const results: unknown[] = [];
   for (let i = 0; i < commands.length; i += 200) {
     const res = await fetch(`${env.redisUrl}/pipeline`, {
@@ -142,10 +154,14 @@ export function json(env: Env, status: number, body: unknown): Result {
 
 export const preflight = (env: Env): Result => ({ status: 204, body: null, headers: cors(env) });
 
+export function hasStorage(env: Env): boolean {
+  return Boolean(env.store || (env.redisUrl && env.redisToken));
+}
+
 export function missingConfig(env: Env): string | null {
   if (!env.token) return "TELEGRAM_BOT_TOKEN is not set";
   if (!env.secret) return "TELEGRAM_WEBHOOK_SECRET is not set";
-  if (!env.redisUrl || !env.redisToken) return "Redis is not connected (add Upstash Redis to the project)";
+  if (!hasStorage(env)) return "Storage is not connected (Upstash Redis for Vercel, or the Durable Object for Cloudflare)";
   return null;
 }
 

@@ -12,6 +12,7 @@ import {
   KEY_ALPHABET,
   KEY_RE,
   PAIR_TTL_S,
+  hasStorage,
   json,
   limited,
   missingConfig,
@@ -186,7 +187,7 @@ export async function handleInbox(
 export async function handleStatus(env: Env, method: string): Promise<Result> {
   if (method === "OPTIONS") return preflight(env);
   // Public endpoint that calls Telegram: bound the cost of abuse (only when Redis is available to count).
-  if (env.redisUrl && env.redisToken) {
+  if (hasStorage(env)) {
     try {
       if (await limited(env, "status", 60)) return json(env, 429, { ok: false, error: "Too many requests, wait a minute" });
     } catch {
@@ -206,7 +207,7 @@ export async function handleStatus(env: Env, method: string): Promise<Result> {
       report.problem = e instanceof Error ? e.message : "Telegram unreachable";
     }
   }
-  if (env.redisUrl && env.redisToken) {
+  if (hasStorage(env)) {
     try {
       report.redis = (await redis(env, ["PING"])) === "PONG";
       if (report.configured) Object.assign(report, await publicCapabilities(env));

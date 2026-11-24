@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import type { Result } from "./core";
+import { readEnv, type Result } from "./infra";
+import { clockNow, route } from "./routes";
 
 export function header(req: VercelRequest, name: string): string | undefined {
   const v = req.headers[name];
@@ -38,4 +39,22 @@ export function safely(fn: (req: VercelRequest) => Promise<Result>) {
       res.status(500).json({ ok: false, error: e instanceof Error ? e.message : "Server error" });
     }
   };
+}
+
+/** A Vercel function for one named route. */
+export function vercelRoute(name: string) {
+  return safely(async (req) => {
+    const env = readEnv();
+    const headers = headerMap(req);
+    const result = await route(name, {
+      env,
+      method: req.method ?? "GET",
+      headers,
+      query: queryMap(req),
+      body: req.body,
+      host: header(req, "x-forwarded-host") ?? header(req, "host") ?? "",
+      now: clockNow(env, headers),
+    });
+    return result ?? { status: 404, body: { ok: false } };
+  });
 }

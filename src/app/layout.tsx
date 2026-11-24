@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { Toaster } from "react-hot-toast";
+import { buildCsp } from "@/lib/csp";
 
 export const metadata: Metadata = {
   title: "TaskFlow — Personal Productivity System",
@@ -10,18 +11,7 @@ export const metadata: Metadata = {
 
 // CSP meta tag — effective on GitHub Pages (static hosting) where HTTP headers can't be set.
 // Single source of truth: next.config.ts cannot send headers with `output: "export"`.
-const CSP_META = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https://avatars.githubusercontent.com https://lh3.googleusercontent.com",
-  "font-src 'self'",
-  "connect-src 'self' https://api.telegram.org https://*.vercel.app",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "upgrade-insecure-requests",
-].join("; ");
+const CSP_META = buildCsp(process.env.NEXT_PUBLIC_BOT_ORIGINS);
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

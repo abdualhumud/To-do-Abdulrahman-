@@ -48,6 +48,9 @@ jobs:
         run: npm test
 
       - name: Build
+        env:
+          # Extra bot-server origins for the Content-Security-Policy, e.g. https://bot.example.com
+          NEXT_PUBLIC_BOT_ORIGINS: ${{ vars.BOT_ORIGINS }}
         run: npm run build
 
       - name: Upload Pages artifact

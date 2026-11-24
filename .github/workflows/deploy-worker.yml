@@ -1,0 +1,86 @@
+name: Deploy bot to Cloudflare
+
+# Publishes the bot server (cloudflare/) to Cloudflare Workers, sets its secrets and registers the
+# Telegram webhook. One-time setup: GitHub → Settings → Secrets and variables → Actions → Secrets:
+#   CLOUDFLARE_API_TOKEN   token from the "Edit Cloudflare Workers" template
+#   CLOUDFLARE_ACCOUNT_ID  Cloudflare dashboard → Workers & Pages → Account ID
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET   (the secret is any long random string)
+#   optional: RESEND_API_KEY, REMINDER_EMAIL_TO, EMAIL_FROM   (email reminders)
+# Without the Cloudflare secrets this workflow only type-checks the Worker.
+on:
+  push:
+    branches:
+      - main
+      - claude/build-todo-app-BLpsC
+    paths:
+      - "cloudflare/**"
+      - "telegram-bot/lib/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      REMINDER_EMAIL_TO: ${{ secrets.REMINDER_EMAIL_TO }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      # Only the TaskFlow site may call the server from a browser.
+      APP_ORIGIN: ${{ vars.APP_ORIGIN || format('https://{0}.github.io', github.repository_owner) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: cloudflare/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Deploy, set secrets, register the Telegram webhook
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Cloudflare secrets are not set — skipping the deploy."
+            exit 0
+          fi
+
+          npx wrangler deploy 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+
+          node -e '
+            const keys = ["TELEGRAM_BOT_TOKEN","TELEGRAM_WEBHOOK_SECRET","RESEND_API_KEY","REMINDER_EMAIL_TO","EMAIL_FROM","APP_ORIGIN"];
+            const out = {};
+            for (const k of keys) if (process.env[k]) out[k] = process.env[k];
+            require("fs").writeFileSync(process.env.RUNNER_TEMP + "/secrets.json", JSON.stringify(out));
+          '
+          npx wrangler secret bulk "$RUNNER_TEMP/secrets.json"
+          rm -f "$RUNNER_TEMP/secrets.json"
+
+          URL=$(grep -oE 'https://[A-Za-z0-9.-]+\.workers\.dev' "$RUNNER_TEMP/deploy.log" | head -1)
+          echo "Worker URL: $URL"
+          if [ -n "$URL" ] && [ -n "$TELEGRAM_WEBHOOK_SECRET" ]; then
+            curl --fail --silent --show-error --max-time 30 -G "$URL/api/setup" --data-urlencode "key=$TELEGRAM_WEBHOOK_SECRET"
+            echo
+            curl --fail --silent --show-error --max-time 30 "$URL/api/status"
+            echo
+          fi

@@ -1,4 +1,3 @@
-import { handleStatus, readEnv } from "../lib/core";
-import { safely } from "../lib/adapter";
+import { vercelRoute } from "../lib/adapter";
 
-export default safely((req) => handleStatus(readEnv(), req.method ?? "GET"));
+export default vercelRoute("status");

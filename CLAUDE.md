@@ -88,7 +88,7 @@ All entry points share one parser: `src/lib/task-parser.ts` (pure, EN + AR, unit
 
 ## Telegram — two modes (`src/lib/telegram.ts`, `components/settings/TelegramCard.tsx`)
 
-**Server mode (recommended, `telegram-bot/` on Vercel)** — the bot answers instantly 24/7, even
+**Server mode (recommended; hosted on Cloudflare Workers, Vercel is the alternative)** — the bot answers instantly 24/7, even
 with the app closed. The server never stores the task list, only raw message text in a Redis
 inbox until the app collects it. Flow: app `POST /api/pair` → `{code, inboxKey, bot}`; user sends
 `/link CODE`; server binds `chat:<id>`↔`inboxKey` (+`linked:<key>`); messages `RPUSH inbox:<key>`;
@@ -97,19 +97,32 @@ app `GET /api/inbox` (Bearer inboxKey) → parses with the shared parser → cre
 fails). Other endpoints: `/api/webhook` (secret-header checked), `/api/status` (public health, no
 secrets), `/api/setup?key=<secret>` (registers the webhook for the deployment host — no manual
 setWebhook). "New code" revokes the old code (`previousCode`); a linked chat can re-link and its
-pending messages move to the new inbox. Pairing is rate limited (30/min), `/api/status` too (60/min); secrets are compared in constant time. The app's CSP allows
-`https://*.vercel.app` only — a custom domain needs adding to `connect-src` (layout.tsx +
-next.config.ts).
-Deploy (Vercel): New Project → import this repo → **Root Directory `telegram-bot`** → env
-`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET` (any long random string) → Storage → add
-**Upstash Redis** and connect it (adds `KV_REST_API_URL/TOKEN` or `UPSTASH_REDIS_REST_*`) →
-redeploy → open `https://<project>.vercel.app/api/setup?key=<secret>` once → paste the
-`https://<project>.vercel.app` address in TaskFlow → Settings → Telegram → Connect server. Use the
-production domain, not a preview URL (previews are behind Vercel Authentication).
-Tested locally against fakes of Upstash REST and the Bot API running the real `api/*.ts`
-(`tsc --strict` against `@vercel/node` types too). It has NOT been run on real Vercel/Upstash/
-Telegram — the dev sandbox cannot reach them. If setup fails, `/api/status` and the app's
-"Check connection" name the missing piece.
+pending messages move to the new inbox. Pairing is rate limited (30/min), `/api/status` too (60/min); secrets are compared in constant time. 
+**Hosts** — all server logic is host-neutral in `telegram-bot/lib/` (`routes.ts` is the single routing table, handlers are
+pure `(env, …) → Result`); storage is behind `Store` (`infra.ts`): Upstash REST by default, or an injected store.
+- **Cloudflare Worker (recommended)** — `cloudflare/` (`wrangler.toml`, `src/index.ts`, `src/store.ts`). One Durable Object
+  (SQLite-backed) runs `RedisEngine` (`lib/redis-engine.ts`, a Redis-compatible in-memory engine persisted per key) so
+  there is **no Redis account**, and a Durable Object serialises calls, which makes the `ZREM` claim atomic. A cron
+  trigger runs `runDue` **every minute** (no external scheduler). Web Push uses WebCrypto (`lib/webpush.ts`, RFC 8291/8292,
+  cross-checked against `http_ece`), so no Node-only package is needed. Free plan is enough.
+  Deploy = `.github/workflows/deploy-worker.yml` (secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, optional `RESEND_API_KEY`, `REMINDER_EMAIL_TO`, `EMAIL_FROM`; variable
+  `APP_ORIGIN` defaults to the Pages origin and becomes the CORS allow-origin) — it deploys, bulk-sets secrets and calls
+  `/api/setup`. Manual: `cd cloudflare && npm ci && npx wrangler deploy` then `npx wrangler secret put …`.
+  URL = `https://taskflow-bot.<account-subdomain>.workers.dev`; to use a subdomain of a domain already on Cloudflare
+  set `routes = [{ pattern = "bot.example.com", custom_domain = true }]` in `wrangler.toml` (or Dashboard → Worker →
+  Domains & Routes) and add that origin to the **GitHub variable `BOT_ORIGINS`** (→ `NEXT_PUBLIC_BOT_ORIGINS`, validated
+  in `src/lib/csp.ts`) so the site's CSP allows it; `*.workers.dev` and `*.vercel.app` are allowed by default.
+- **Vercel** — `telegram-bot/api/*.ts` are one-line wrappers (`vercelRoute(name)` in `lib/adapter.ts`). Root Directory
+  `telegram-bot`, env `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, Upstash Redis (`KV_REST_API_*` or
+  `UPSTASH_REDIS_REST_*`); Hobby cron is daily only, so use `.github/workflows/reminders.yml` (variable `BOT_SERVER_URL`,
+  secret `CRON_SECRET`) or an external pinger. Use the production domain, not preview URLs.
+After deploying: open `<server>/api/setup?key=<TELEGRAM_WEBHOOK_SECRET>` once (the workflow does it), then in TaskFlow →
+Settings → Telegram paste the server address → Connect server → send `/link CODE`.
+Tested locally: unit tests with fakes, browser suites against both the Node harness and the **real Worker on workerd**
+(`npm run test:e2e -- --worker`), and `npm run test:worker` (scheduled handler, Web Push crypto + VAPID, 410 pruning,
+state surviving a restart). Never run against real Cloudflare/Vercel/Telegram — the dev sandbox cannot reach them.
+If setup fails, `/api/status` and the app's "Check connection" name the missing piece.
 
 **Browser mode (no server)** — the browser calls
 `api.telegram.org/bot<token>/getUpdates` directly (form-encoded POST = no CORS preflight).
@@ -159,20 +172,19 @@ modes) use it.
 - *Server* (opt-in; Settings → Reminders → "Keep reminders on my server"): the app PUTs a replace-all copy of
   open tasks that have a due date or reminder to `/api/reminders` (debounced, skipped when unchanged).
   Redis: `rem:<key>`, `cal:<key>`, `state:<key>` (last delivered), zset `due` scored by next fire time.
-  `/api/cron` (secret) claims due members with `ZREM` (exactly one of overlapping runs wins → no double
+  `/api/cron` (secret; on Cloudflare the cron trigger calls `runDue` directly) claims due members with `ZREM` (exactly one of overlapping runs wins → no double
   sends; at-most-once), delivers per channel with `Promise.all`, records the occurrence, reschedules
   repeats. Re-syncing never refires (state), editing the time does.
   - Telegram → the linked chat (`linked:<key>`). Email → Resend, **recipient fixed by server env
     `REMINDER_EMAIL_TO`** (the client cannot choose it, so a leaked key can't spam others); default sender
-    `onboarding@resend.dev` only delivers to the Resend account owner. Phone → Web Push (`web-push`, VAPID keys
-    generated once into Redis `vapid:keys`, public key from `/api/status`); `public/sw.js` shows it and only
+    `onboarding@resend.dev` only delivers to the Resend account owner. Phone → Web Push (own WebCrypto implementation, VAPID keys
+    generated once into the store key `vapid:keys`, public key from `/api/status`); `public/sw.js` shows it and only
     opens same-origin URLs; 404/410 subscriptions are pruned. iOS push works only for a Home-Screen web app
     (separate storage from Safari — the UI says so).
   - Test buttons (`POST /api/reminders?test=<channel>`) return `{ok:true, delivered, detail}` — request success
     and delivery success are separate on purpose.
-- *Who calls cron*: Vercel cron daily (`vercel.json`, Hobby limit; needs `CRON_SECRET` env) as a safety net;
-  `.github/workflows/reminders.yml` every 5 min (repo variable `BOT_SERVER_URL`, secret `CRON_SECRET`; runs
-  only from the default branch and can lag) or an external pinger every minute. Precision = how often cron runs.
+- *Who calls cron*: Cloudflare cron trigger every minute (nothing to configure). On Vercel: daily Vercel cron as a safety net
+  (needs `CRON_SECRET`), `.github/workflows/reminders.yml` every 5 min, or an external pinger. Precision = how often cron runs.
 
 **Calendar** — per task: `.ics` download (UTC instant for one-offs; *floating local time + RRULE* for repeats so
 they survive DST without VTIMEZONE; all-day events for due-date-only tasks; VALARM so the calendar app itself
@@ -181,7 +193,7 @@ alerts), Outlook web "new event" links (M365 and Outlook.com; they cannot carry 
 can't send headers) → `webcal://` for Apple, "Subscribe from web" for Outlook; Apple refreshes ~hourly, Outlook
 can take hours. The feed is built from the synced copy, so it needs the opt-in sync.
 
-**Server env**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, Upstash Redis, optional `CRON_SECRET`,
+**Server env**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, storage (Durable Object or Upstash), optional `CRON_SECRET`,
 `RESEND_API_KEY`, `REMINDER_EMAIL_TO`, `EMAIL_FROM`, `APP_ORIGIN`. Nothing here has run against real Vercel/
 Resend/push services (sandbox can't reach them): unit tests use fakes (`tests/unit/helpers/fakes.ts`), the SW
 is tested in a `vm` sandbox, and `reminders.e2e.js` drives the whole flow with a controllable clock
@@ -224,8 +236,9 @@ Settings → Export/Import (`src/lib/backup.ts`): JSON with tasks/tags/habits/co
 
 ## Security notes
 - CSP is injected as a `<meta>` in `src/app/layout.tsx` — the single source of truth (headers() in
-  next.config.ts is ignored with `output: "export"`, so it was removed). `connect-src` allows only
-  `https://api.telegram.org` and `https://*.vercel.app`.
+  next.config.ts is ignored with `output: "export"`, so it was removed). `connect-src` allows `https://api.telegram.org`,
+  `https://*.workers.dev`, `https://*.vercel.app` and validated extras from `NEXT_PUBLIC_BOT_ORIGINS` (`src/lib/csp.ts`).
+  Test-only server features (`x-test-now`, `/__redis`, `/__reset`, local push endpoint) exist only when `ALLOW_TEST_CLOCK=1`.
 - No wildcard `remotePatterns`. Sign-out asks for confirmation (it clears the profile, not tasks).
 - A capture link can add tasks (≤100 per link, text only, rendered escaped by React). That is
   the price of one-tap Shortcuts; nothing is read or deleted by links.
@@ -245,7 +258,8 @@ Settings → Export/Import (`src/lib/backup.ts`): JSON with tasks/tags/habits/co
    IndexedDB). Telegram is mocked with `page.route` (add `access-control-allow-origin: *`).
 3. Take screenshots (light, dark, 390px mobile) — functional tests don't catch design bugs.
 4. Type-check the Vercel functions strictly against `@vercel/node` (they are excluded from the
-   Next tsconfig).
+   Next tsconfig); `cd cloudflare && npx tsc --noEmit` for the Worker.
+5. Worker: `cd cloudflare && npm ci`, then `npm run test:e2e -- --worker` and `npm run test:worker` (needs workerd; ~1 min).
 
 ## Dates
 Never build a day string with `toISOString()` (it is UTC; off by a day around midnight in UTC+3 and
@@ -280,7 +294,8 @@ src/
     capture.ts  telegram.ts  backup.ts  utils.ts
     reminders.ts  reminder-fields.ts  calendar.ts  push.ts   (sync/in-app alerts, text→reminder, .ics/Outlook/feed, Web Push)
   store/                        Zustand: useTaskStore (createTasks, merge-safe reorder), useHabitStore
-telegram-bot/                   Always-on bot server for Vercel: api/{webhook,pair,inbox,status,setup,reminders,push,cron,feed}.ts
-                                + lib/{core,infra,reminders,recurrence,ics}.ts (recurrence/ics are also imported by the app)
+cloudflare/                     Cloudflare Worker host: wrangler.toml, src/index.ts (fetch + cron), src/store.ts (Durable Object)
+telegram-bot/                   Host-neutral bot server (+ Vercel wrappers): api/{webhook,pair,inbox,status,setup,reminders,push,cron,feed}.ts
+                                + lib/{core,infra,routes,reminders,redis-engine,webpush,recurrence,ics}.ts (recurrence/ics are also imported by the app)
 tests/unit, tests/e2e           node:test suites (CI) and Playwright suites (manual)
 ```

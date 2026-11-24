@@ -93,7 +93,7 @@ export function TelegramCard() {
             value={serverUrl}
             onChange={(e) => setServerUrl(e.target.value)}
             className="input-base font-mono text-xs"
-            placeholder="https://your-bot.vercel.app"
+            placeholder="https://taskflow-bot.your-name.workers.dev"
             autoComplete="off"
             autoCapitalize="off"
             autoCorrect="off"

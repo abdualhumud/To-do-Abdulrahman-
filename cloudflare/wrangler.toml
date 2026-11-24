@@ -1,0 +1,33 @@
+# TaskFlow bot server on Cloudflare Workers (free plan is enough).
+# Deploy:  cd cloudflare && npm ci && npx wrangler deploy
+# Secrets (set once, never commit):  npx wrangler secret put TELEGRAM_BOT_TOKEN   (and the others below)
+name = "taskflow-bot"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# Reached at https://taskflow-bot.<your-subdomain>.workers.dev (no domain needed).
+# To serve it from a subdomain of a domain you already have on Cloudflare, uncomment and edit:
+# routes = [{ pattern = "bot.example.com", custom_domain = true }]
+
+# Runs due reminders every minute (this replaces any external cron).
+[triggers]
+crons = ["* * * * *"]
+
+# All state (pairing, inboxes, reminders, calendar copy) lives in one Durable Object with SQLite
+# storage — no Redis, no extra account.
+[[durable_objects.bindings]]
+name = "STORE"
+class_name = "RedisDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RedisDO"]
+
+[observability]
+enabled = true
+
+# Secrets / variables read by the Worker:
+#   TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET   (required)
+#   CRON_SECRET                                   (optional; defaults to TELEGRAM_WEBHOOK_SECRET)
+#   RESEND_API_KEY, REMINDER_EMAIL_TO, EMAIL_FROM (optional: email reminders)
+#   APP_ORIGIN                                    (optional: restrict CORS, e.g. https://user.github.io)

@@ -11,7 +11,7 @@ the browser (no account, no database) and is deployed as a static site to GitHub
 - **Add tasks from anywhere** — Quick add with a live preview, paste a list from Notes/Reminders,
   Apple Shortcuts / Siri / bookmarklet links (`?add=…`), and Telegram. Dates, `#category` and
   `!priority` are understood in English and Arabic. See the in-app **Capture** page.
-- **Telegram** — either an always-on server (`telegram-bot/` on Vercel, replies instantly even when
+- **Telegram** — either an always-on server (a free Cloudflare Worker, replies instantly even when
   the app is closed) or browser-only polling with your own bot token.
 - **Reminders** — set a time (and repeat: daily, Mon–Fri, Sun–Thu, weekly, monthly) per task, or just write
   “…tomorrow at 5pm”. Delivered in the app, by Telegram, email or phone push (the last three need the bot server).
@@ -23,7 +23,7 @@ the browser (no account, no database) and is deployed as a static site to GitHub
 ## Stack
 
 Next.js 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS v4 · Zustand · Zod ·
-dnd-kit · Recharts. The optional bot server uses Vercel Functions + Upstash Redis.
+dnd-kit · Recharts. The optional bot server runs on Cloudflare Workers (or Vercel Functions + Upstash Redis).
 
 ## Development
 
@@ -34,13 +34,15 @@ npm run lint
 npm test           # unit tests: task parser + bot server logic (Node's built-in runner)
 npm run build      # static site in out/
 npm run test:e2e   # browser suites (needs a build, Playwright + Chromium)
+npm run test:worker # Cloudflare Worker on workerd (after `npm ci` in cloudflare/)
 ```
 
 CI (`.github/workflows/deploy.yml`) runs lint and the unit tests before building and deploying.
 
-## Telegram server (optional)
+## Bot server (optional, recommended)
 
-Deploy the `telegram-bot/` folder as its own Vercel project (Root Directory `telegram-bot`), set
-`TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET`, connect Upstash Redis, open
-`/api/setup?key=<secret>` once, then paste the project address in **Settings → Telegram**.
-Details and design notes are in `CLAUDE.md`.
+A free Cloudflare Worker (`cloudflare/`) keeps the bot online, sends reminders every minute and serves the calendar
+feed; its data lives in a Durable Object, so no extra database account is needed. Add the repository secrets listed in
+`.github/workflows/deploy-worker.yml` and run that workflow — it deploys the Worker, sets its secrets and registers the
+Telegram webhook. Then paste the Worker address in **Settings → Telegram**. A Vercel variant of the same server is in
+`telegram-bot/`. Design notes are in `CLAUDE.md`.

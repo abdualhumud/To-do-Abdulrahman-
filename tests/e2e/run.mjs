@@ -1,7 +1,9 @@
 // Browser end-to-end suites. Needs: `npm run build` (out/), Playwright with Chromium, network access to npm (tsx).
-//   npm run build && npm run test:e2e
+//   npm run build && npm run test:e2e            (Vercel handlers on Node, fake Redis)
+//   npm run build && npm run test:e2e -- --worker (the Cloudflare Worker on workerd; needs `npm ci` in cloudflare/)
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -50,7 +52,7 @@ const waitFor = async (url) => {
   throw new Error(`${url} did not start`);
 };
 
-for (const url of ["http://localhost:4173/", "http://127.0.0.1:4303/api/status"]) {
+for (const url of ["http://localhost:4173/", "http://127.0.0.1:4303/api/status", "http://127.0.0.1:4302/__sent"]) {
   const busy = await fetch(url).then(() => true, () => false);
   if (busy) {
     console.error(`${url} is already served by another process (a stale run?). Stop it and retry.`);
@@ -58,10 +60,40 @@ for (const url of ["http://localhost:4173/", "http://127.0.0.1:4303/api/status"]
   }
 }
 
+const workerMode = process.argv.includes("--worker");
+
 start("node", [path.join(here, "serve.cjs"), path.join(root, "out"), "4173"]);
-start("npx", ["--yes", "tsx", path.join(here, "bot-harness.mts")]);
+start("npx", ["--yes", "tsx", path.join(here, "fake-services.mts")]);
+if (workerMode) {
+  const wrangler = path.join(root, "cloudflare/node_modules/.bin/wrangler");
+  if (!existsSync(wrangler)) {
+    console.error("Run `npm ci` inside cloudflare/ first (installs wrangler / workerd).");
+    process.exit(2);
+  }
+  writeFileSync(
+    path.join(root, "cloudflare/.dev.vars"),
+    [
+      "TELEGRAM_BOT_TOKEN=123456789:AAHdqTcvCH1vGWJxfSeofSs0K38CIDabcde",
+      "TELEGRAM_WEBHOOK_SECRET=test-webhook-secret",
+      "CRON_SECRET=cron-secret",
+      "RESEND_API_KEY=re_test",
+      "REMINDER_EMAIL_TO=owner@elm.sa",
+      "TELEGRAM_API_BASE=http://127.0.0.1:4302",
+      "RESEND_API_BASE=http://127.0.0.1:4304",
+      "ALLOW_TEST_CLOCK=1",
+      "",
+    ].join("\n"),
+  );
+  const persist = mkdtempSync(path.join(os.tmpdir(), "tf-worker-"));
+  const worker = spawn(wrangler, ["dev", "--port", "4303", "--ip", "127.0.0.1", "--persist-to", persist], { cwd: path.join(root, "cloudflare"), stdio: "ignore", detached: true });
+  children.push(worker);
+} else {
+  start("npx", ["--yes", "tsx", path.join(here, "bot-node.mts")]);
+}
 await waitFor("http://localhost:4173/To-do-Abdulrahman-/login/");
+await waitFor("http://127.0.0.1:4302/__sent");
 await waitFor("http://127.0.0.1:4303/api/status");
+console.log(workerMode ? "bot server: Cloudflare Worker (workerd)" : "bot server: Vercel handlers on Node");
 
 let failed = 0;
 for (const suite of ["app.e2e.js", "telegram-browser.e2e.js", "telegram-server.e2e.js", "reminders.e2e.js"]) {
